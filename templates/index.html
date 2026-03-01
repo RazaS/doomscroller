@@ -286,7 +286,7 @@
 
     <section class="controls">
       <button id="next-btn" type="button">Next study</button>
-      <button id="refresh-btn" type="button">Refresh feeds</button>
+      <button id="refresh-btn" type="button">Reload cache</button>
     </section>
 
     <p class="status" id="status"></p>
@@ -416,7 +416,7 @@
 
         if (!data.ok || !data.study) {
           updateDeckBadge(0, 0);
-          setStatus(data.message || "No studies available. Check feeds.csv and refresh.", true);
+          setStatus(data.message || "No cached studies available. Run the offline updater script.", true);
           loading = false;
           return;
         }
@@ -439,20 +439,20 @@
     async function refreshFeeds() {
       if (loading) return;
       loading = true;
-      setStatus("Refreshing feed data...");
+      setStatus("Reloading cache file...");
       try {
         const res = await fetch("/api/refresh", { method: "POST" });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         if (data.message) {
-          setStatus(`Refresh done with warnings: ${data.message}`, true);
+          setStatus(`Cache reload warnings: ${data.message}`, true);
         } else {
-          setStatus("Feeds refreshed.");
+          setStatus("Cache reloaded.");
         }
         loading = false;
         await fetchNextStudy("up");
       } catch (err) {
-        setStatus(`Refresh failed: ${err.message}`, true);
+        setStatus(`Cache reload failed: ${err.message}`, true);
       } finally {
         loading = false;
       }

@@ -41,8 +41,9 @@ DOI_RE = re.compile(r"\b10\.\d{4,9}/[-._;()/:a-z0-9]+\b", re.IGNORECASE)
 PUBMED_SIEVE_QUERY_TERM = "transfusion"
 PUBMED_SIEVE_DATE_FILTER = "\"last 6 months\"[dp]"
 PUBMED_SIEVE_MAX_ITEMS = 150
-CACHE_DIR = APP_ROOT / "cache"
-STUDIES_CACHE_PATH = CACHE_DIR / "studies_cache.json"
+DATA_DIR = APP_ROOT / "data"
+STUDIES_CACHE_PATH = DATA_DIR / "studies_cache.json"
+LEGACY_STUDIES_CACHE_PATH = APP_ROOT / "cache" / "studies_cache.json"
 
 
 def local_name(tag: str) -> str:
@@ -280,9 +281,12 @@ class StudyDeck:
 
     def _load_cache_from_disk(self) -> None:
         try:
-            if not STUDIES_CACHE_PATH.exists():
+            source_path = STUDIES_CACHE_PATH
+            if not source_path.exists() and LEGACY_STUDIES_CACHE_PATH.exists():
+                source_path = LEGACY_STUDIES_CACHE_PATH
+            if not source_path.exists():
                 return
-            payload = json.loads(STUDIES_CACHE_PATH.read_text(encoding="utf-8"))
+            payload = json.loads(source_path.read_text(encoding="utf-8"))
             cached_items = payload.get("items", [])
             if not isinstance(cached_items, list):
                 return
@@ -298,7 +302,7 @@ class StudyDeck:
 
     def _save_cache_to_disk(self) -> None:
         try:
-            CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            DATA_DIR.mkdir(parents=True, exist_ok=True)
             payload = {
                 "last_fetch_ts": self.last_fetch_ts,
                 "saved_at_iso": datetime.now(timezone.utc).isoformat(),
@@ -377,9 +381,21 @@ class StudyDeck:
             return None
         return datetime(year, 1, 1, tzinfo=timezone.utc)
 
-    def _refresh_locked(self) -> None:
-        # Only hit external sources once per week; serve from cache otherwise.
-        if not self._fetch_due() and self.items:
+    def _refresh_locked(self, allow_external_fetch: bool = False, force_external_fetch: bool = False) -> None:
+        # Runtime mode: never hit external sources. Serve from cached file only.
+        if not allow_external_fetch:
+            self.items = self._prune_old_studies(self.items)
+            self._rebuild_deck_locked()
+            if not self.items:
+                self.last_error = (
+                    "No cached studies found. Run `python3 scripts/update_studies_cache.py` "
+                    "to refresh data offline."
+                )
+            self.last_refresh_ts = time.time()
+            return
+
+        # Offline update mode: fetch at most weekly unless explicitly forced.
+        if not force_external_fetch and not self._fetch_due() and self.items:
             self.items = self._prune_old_studies(self.items)
             self._rebuild_deck_locked()
             self.last_refresh_ts = time.time()
@@ -429,15 +445,23 @@ class StudyDeck:
         self.last_refresh_ts = time.time()
         self._save_cache_to_disk()
 
-    def force_refresh(self) -> None:
+    def force_refresh(self, allow_external_fetch: bool = False, force_external_fetch: bool = False) -> None:
         with self.lock:
-            self._refresh_locked()
+            self._refresh_locked(
+                allow_external_fetch=allow_external_fetch,
+                force_external_fetch=force_external_fetch,
+            )
+
+    def reload_cache_from_disk(self) -> None:
+        with self.lock:
+            self._load_cache_from_disk()
+            self._refresh_locked(allow_external_fetch=False)
 
     def maybe_refresh(self) -> None:
         with self.lock:
             stale = (time.time() - self.last_refresh_ts) > self.refresh_seconds
-            if stale or not self.items:
-                self._refresh_locked()
+            if stale:
+                self._refresh_locked(allow_external_fetch=False)
 
     def get_next(self) -> Dict:
         self.maybe_refresh()
@@ -448,7 +472,10 @@ class StudyDeck:
             if not self.deck:
                 return {
                     "ok": False,
-                    "message": self.last_error or "No studies available.",
+                    "message": (
+                        self.last_error
+                        or "No cached studies available. Run `python3 scripts/update_studies_cache.py`."
+                    ),
                     "study": None,
                     "total_loaded": 0,
                     "remaining_in_deck": 0,
@@ -629,7 +656,7 @@ def api_feeds():
 
 @app.post("/api/refresh")
 def api_refresh():
-    deck.force_refresh()
+    deck.reload_cache_from_disk()
     return jsonify(
         {
             "ok": True,

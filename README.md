@@ -13,8 +13,9 @@ Default feed is the latest `Transfusion` RSS feed:
 - Randomized study ordering from your configured feeds.
 - Additional PubMed stream via `pubmed-sieve`: pulls studies matching `transfusion` in title/abstract (`[tiab]`) from the last 6 months.
 - Feed list managed via `feeds.csv` (no code changes needed to add more journals).
-- Server-side refresh cache (auto refresh every 15 minutes, plus manual refresh button).
-- External fetches are throttled to once per week and cached to disk (`cache/studies_cache.json`) for faster load times.
+- Runtime is cache-only: the web app never fetches external studies on startup/page load.
+- Study cache is saved in-repo at `data/studies_cache.json` so you can update offline and push to GitHub manually.
+- Offline updater can fetch at most weekly by default; pass `--force` to fetch immediately.
 - Studies older than 6 months are automatically removed from the deck.
 
 ## Setup
@@ -27,6 +28,26 @@ python3 app.py
 Then open:
 
 - `http://127.0.0.1:5000`
+
+## Offline Update Workflow
+
+Update the cached study database manually (outside app runtime):
+
+```bash
+python3 scripts/update_studies_cache.py
+```
+
+This writes:
+
+- `data/studies_cache.json`
+
+Then commit/push the updated JSON file whenever you want:
+
+```bash
+git add data/studies_cache.json
+git commit -m "Update cached studies"
+git push
+```
 
 ## Add More RSS Feeds
 
@@ -43,11 +64,11 @@ Notes:
 - `enabled` values accepted as off: `0`, `false`, `no`, `off`
 - Any other value means enabled
 
-After editing `feeds.csv`, click **Refresh feeds** in the app.
+After editing `feeds.csv`, run `python3 scripts/update_studies_cache.py` and then click **Reload cache** in the app (or restart app).
 
 ## PubMed Sieve Integration
 
 This app vendors code from [pubmed-sieve](https://github.com/hbhargava7/pubmed-sieve) under `third_party/pubmed_sieve`.
-On refresh, it adds PubMed studies matching:
+During offline cache update, it adds PubMed studies matching:
 
 - `("transfusion"[tiab]) AND ("last 6 months"[dp])`
