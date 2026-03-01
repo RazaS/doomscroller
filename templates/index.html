@@ -88,7 +88,7 @@
       box-shadow: var(--shadow);
       transition: transform 220ms ease, opacity 220ms ease;
       user-select: none;
-      touch-action: pan-x;
+      touch-action: manipulation;
       border: 1px solid rgba(20, 33, 43, 0.07);
       perspective: 1300px;
       position: relative;
@@ -290,7 +290,7 @@
     </section>
 
     <p class="status" id="status"></p>
-    <p class="hint">Swipe up/down on the card, or tap card to flip</p>
+    <p class="hint">Swipe up/down on the card for next study, tap to flip</p>
   </main>
 
   <script>
@@ -311,8 +311,11 @@
     let loading = false;
     let touchStartY = null;
     let touchStartX = null;
+    let touchCurrentY = null;
+    let touchCurrentX = null;
     let lastSwipeAt = 0;
     let movedDuringTouch = false;
+    let swipeConsumed = false;
     let currentStudyId = "";
     let abstractRequestToken = 0;
 
@@ -461,24 +464,52 @@
       movedDuringTouch = Math.abs(dy) > 14 || dx > 14;
       const now = Date.now();
       if (now - lastSwipeAt < 240) return;
-      if (Math.abs(dy) < 50 || dx > 90) return;
+      if (Math.abs(dy) < 42 || dx > 120 || Math.abs(dy) < (dx * 1.15)) return;
       lastSwipeAt = now;
       fetchNextStudy(dy > 0 ? "up" : "down");
+      return true;
     }
 
     card.addEventListener("touchstart", (ev) => {
       const t = ev.changedTouches[0];
       touchStartY = t.clientY;
       touchStartX = t.clientX;
+      touchCurrentY = t.clientY;
+      touchCurrentX = t.clientX;
       movedDuringTouch = false;
+      swipeConsumed = false;
     }, { passive: true });
+
+    card.addEventListener("touchmove", (ev) => {
+      if (touchStartY === null || touchStartX === null) return;
+      const t = ev.changedTouches[0];
+      touchCurrentY = t.clientY;
+      touchCurrentX = t.clientX;
+      const dy = touchStartY - touchCurrentY;
+      const dx = Math.abs(touchStartX - touchCurrentX);
+      movedDuringTouch = Math.abs(dy) > 14 || dx > 14;
+
+      // Once movement is clearly a vertical swipe, stop native page scrolling.
+      if (Math.abs(dy) > 24 && Math.abs(dy) > (dx * 1.2)) {
+        ev.preventDefault();
+      }
+
+      if (!swipeConsumed && maybeSwipeToNext(touchStartY, touchCurrentY, touchStartX, touchCurrentX)) {
+        swipeConsumed = true;
+      }
+    }, { passive: false });
 
     card.addEventListener("touchend", (ev) => {
       if (touchStartY === null || touchStartX === null) return;
       const t = ev.changedTouches[0];
-      maybeSwipeToNext(touchStartY, t.clientY, touchStartX, t.clientX);
+      if (!swipeConsumed) {
+        maybeSwipeToNext(touchStartY, t.clientY, touchStartX, t.clientX);
+      }
       touchStartY = null;
       touchStartX = null;
+      touchCurrentY = null;
+      touchCurrentX = null;
+      swipeConsumed = false;
     }, { passive: true });
 
     card.addEventListener("click", (ev) => {

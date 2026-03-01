@@ -2,11 +2,12 @@ import csv
 import hashlib
 import html
 import json
+import os
 import random
 import re
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -30,6 +31,8 @@ except Exception as exc:
 APP_ROOT = Path(__file__).resolve().parent
 FEEDS_CSV_PATH = APP_ROOT / "feeds.csv"
 REFRESH_SECONDS = 15 * 60
+FETCH_INTERVAL_SECONDS = 7 * 24 * 60 * 60
+MAX_STUDY_AGE_DAYS = 183
 MAX_SUMMARY_LEN = 900
 MAX_ABSTRACT_LEN = 4000
 PUBMED_ESEARCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
@@ -38,6 +41,8 @@ DOI_RE = re.compile(r"\b10\.\d{4,9}/[-._;()/:a-z0-9]+\b", re.IGNORECASE)
 PUBMED_SIEVE_QUERY_TERM = "transfusion"
 PUBMED_SIEVE_DATE_FILTER = "\"last 6 months\"[dp]"
 PUBMED_SIEVE_MAX_ITEMS = 150
+CACHE_DIR = APP_ROOT / "cache"
+STUDIES_CACHE_PATH = CACHE_DIR / "studies_cache.json"
 
 
 def local_name(tag: str) -> str:
@@ -99,7 +104,9 @@ class StudyDeck:
         self.deck: List[Dict] = []
         self.pubmed_cache: Dict[str, Dict] = {}
         self.last_refresh_ts = 0.0
+        self.last_fetch_ts = 0.0
         self.last_error = ""
+        self._load_cache_from_disk()
 
     def load_feeds(self) -> List[Dict[str, str]]:
         feeds: List[Dict[str, str]] = []
@@ -257,6 +264,57 @@ class StudyDeck:
         self.deck = self.items.copy()
         random.shuffle(self.deck)
 
+    def _prune_old_studies(self, studies: List[Dict]) -> List[Dict]:
+        cutoff_dt = datetime.now(timezone.utc) - timedelta(days=MAX_STUDY_AGE_DAYS)
+        cutoff_ts = cutoff_dt.timestamp()
+        pruned: List[Dict] = []
+        for item in studies:
+            ts = float(item.get("published_sort_ts") or 0.0)
+            if ts <= 0:
+                # Keep undated entries; cannot confidently classify as stale.
+                pruned.append(item)
+                continue
+            if ts >= cutoff_ts:
+                pruned.append(item)
+        return pruned
+
+    def _load_cache_from_disk(self) -> None:
+        try:
+            if not STUDIES_CACHE_PATH.exists():
+                return
+            payload = json.loads(STUDIES_CACHE_PATH.read_text(encoding="utf-8"))
+            cached_items = payload.get("items", [])
+            if not isinstance(cached_items, list):
+                return
+            self.items = self._prune_old_studies(cached_items)
+            self.last_fetch_ts = float(payload.get("last_fetch_ts") or 0.0)
+            self.last_refresh_ts = time.time()
+            self._rebuild_deck_locked()
+        except Exception:
+            # Ignore cache read errors and continue with live fetch path.
+            self.items = []
+            self.deck = []
+            self.last_fetch_ts = 0.0
+
+    def _save_cache_to_disk(self) -> None:
+        try:
+            CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            payload = {
+                "last_fetch_ts": self.last_fetch_ts,
+                "saved_at_iso": datetime.now(timezone.utc).isoformat(),
+                "items": self.items,
+            }
+            temp_path = STUDIES_CACHE_PATH.with_suffix(".tmp")
+            temp_path.write_text(json.dumps(payload, ensure_ascii=True), encoding="utf-8")
+            os.replace(temp_path, STUDIES_CACHE_PATH)
+        except Exception:
+            pass
+
+    def _fetch_due(self) -> bool:
+        if self.last_fetch_ts <= 0:
+            return True
+        return (time.time() - self.last_fetch_ts) >= FETCH_INTERVAL_SECONDS
+
     def fetch_pubmed_sieve_items(self) -> List[Dict]:
         if sieve_helpers is None or sieve_query_builder is None:
             raise RuntimeError(
@@ -320,6 +378,13 @@ class StudyDeck:
         return datetime(year, 1, 1, tzinfo=timezone.utc)
 
     def _refresh_locked(self) -> None:
+        # Only hit external sources once per week; serve from cache otherwise.
+        if not self._fetch_due() and self.items:
+            self.items = self._prune_old_studies(self.items)
+            self._rebuild_deck_locked()
+            self.last_refresh_ts = time.time()
+            return
+
         feeds = self.load_feeds()
 
         all_items: List[Dict] = []
@@ -350,16 +415,19 @@ class StudyDeck:
             if dedupe_key not in deduped:
                 deduped[dedupe_key] = item
 
-        self.items = sorted(
+        fresh_items = sorted(
             deduped.values(),
             key=lambda x: x.get("published_sort_ts", 0.0),
             reverse=True,
         )
+        self.items = self._prune_old_studies(fresh_items)
         valid_ids = {item["id"] for item in self.items}
         self.pubmed_cache = {k: v for k, v in self.pubmed_cache.items() if k in valid_ids}
         self._rebuild_deck_locked()
+        self.last_fetch_ts = time.time()
         self.last_error = "; ".join(errors) if errors else ""
         self.last_refresh_ts = time.time()
+        self._save_cache_to_disk()
 
     def force_refresh(self) -> None:
         with self.lock:

@@ -14,6 +14,8 @@ Default feed is the latest `Transfusion` RSS feed:
 - Additional PubMed stream via `pubmed-sieve`: pulls studies matching `transfusion` in title/abstract (`[tiab]`) from the last 6 months.
 - Feed list managed via `feeds.csv` (no code changes needed to add more journals).
 - Server-side refresh cache (auto refresh every 15 minutes, plus manual refresh button).
+- External fetches are throttled to once per week and cached to disk (`cache/studies_cache.json`) for faster load times.
+- Studies older than 6 months are automatically removed from the deck.
 
 ## Setup
 
