@@ -17,6 +17,15 @@ import xml.etree.ElementTree as ET
 
 from flask import Flask, jsonify, render_template
 
+try:
+    from third_party.pubmed_sieve import helpers as sieve_helpers
+    from third_party.pubmed_sieve import pubmed_sieve as sieve_query_builder
+    PUBMED_SIEVE_IMPORT_ERROR = ""
+except Exception as exc:
+    sieve_helpers = None
+    sieve_query_builder = None
+    PUBMED_SIEVE_IMPORT_ERROR = str(exc)
+
 
 APP_ROOT = Path(__file__).resolve().parent
 FEEDS_CSV_PATH = APP_ROOT / "feeds.csv"
@@ -26,6 +35,9 @@ MAX_ABSTRACT_LEN = 4000
 PUBMED_ESEARCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
 PUBMED_EFETCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
 DOI_RE = re.compile(r"\b10\.\d{4,9}/[-._;()/:a-z0-9]+\b", re.IGNORECASE)
+PUBMED_SIEVE_QUERY_TERM = "transfusion"
+PUBMED_SIEVE_DATE_FILTER = "\"last 6 months\"[dp]"
+PUBMED_SIEVE_MAX_ITEMS = 150
 
 
 def local_name(tag: str) -> str:
@@ -245,17 +257,76 @@ class StudyDeck:
         self.deck = self.items.copy()
         random.shuffle(self.deck)
 
+    def fetch_pubmed_sieve_items(self) -> List[Dict]:
+        if sieve_helpers is None or sieve_query_builder is None:
+            raise RuntimeError(
+                "pubmed-sieve unavailable. Install requirements or check third_party/pubmed_sieve. "
+                f"Import error: {PUBMED_SIEVE_IMPORT_ERROR}"
+            )
+
+        # NCBI requests a contact email when using Entrez.
+        if hasattr(sieve_helpers, "Entrez"):
+            sieve_helpers.Entrez.email = "doomscroll-studies@example.com"
+
+        base_query = sieve_query_builder.build_keyword_and_journal_query(
+            keywords=[PUBMED_SIEVE_QUERY_TERM],
+            journals=[],
+            require_hasabstract=False,
+        )
+        if not base_query:
+            return []
+
+        query = f"({base_query}) AND ({PUBMED_SIEVE_DATE_FILTER})"
+        df = sieve_helpers.pubmed_articles_for_query(query)
+        if df is None or len(df) == 0:
+            return []
+
+        if len(df) > PUBMED_SIEVE_MAX_ITEMS:
+            df = df.head(PUBMED_SIEVE_MAX_ITEMS)
+
+        parsed: List[Dict] = []
+        for row in df.to_dict(orient="records"):
+            pmid = str(row.get("PMID") or "").strip()
+            title = str(row.get("Title") or "").strip() or "Untitled PubMed study"
+            journal = str(row.get("Journal") or "").strip() or "PubMed"
+            abstract = str(row.get("Abstract") or "").strip()
+            published_dt = self._year_to_datetime(row.get("Year"))
+            parsed.append(
+                self._build_study(
+                    title=title,
+                    link=f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/" if pmid else "",
+                    summary=abstract or "No abstract available from PubMed.",
+                    published_dt=published_dt,
+                    journal_name=journal,
+                    feed_url=f"pubmed-sieve:{PUBMED_SIEVE_QUERY_TERM}",
+                    stable_key=f"pubmed-sieve:{pmid or title}",
+                )
+            )
+
+        return parsed
+
+    def _year_to_datetime(self, value: object) -> Optional[datetime]:
+        if value is None:
+            return None
+        raw = str(value).strip()
+        if not raw or raw.lower() == "nan":
+            return None
+        try:
+            year = int(float(raw))
+        except ValueError:
+            return None
+        if year < 1800 or year > 2200:
+            return None
+        return datetime(year, 1, 1, tzinfo=timezone.utc)
+
     def _refresh_locked(self) -> None:
         feeds = self.load_feeds()
-        if not feeds:
-            self.items = []
-            self.deck = []
-            self.last_error = "No feeds configured. Add at least one row to feeds.csv."
-            self.last_refresh_ts = time.time()
-            return
 
         all_items: List[Dict] = []
         errors: List[str] = []
+        if not feeds:
+            errors.append("No RSS feeds configured. Add at least one row to feeds.csv.")
+
         for feed in feeds:
             name = feed["name"]
             url = feed["url"]
@@ -265,6 +336,11 @@ class StudyDeck:
                 all_items.extend(parsed)
             except (URLError, TimeoutError, ET.ParseError, ValueError) as exc:
                 errors.append(f"{name}: {exc}")
+
+        try:
+            all_items.extend(self.fetch_pubmed_sieve_items())
+        except Exception as exc:
+            errors.append(f"PubMed (pubmed-sieve): {exc}")
 
         deduped: Dict[str, Dict] = {}
         for item in all_items:

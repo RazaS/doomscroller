@@ -11,6 +11,7 @@ Default feed is the latest `Transfusion` RSS feed:
 - Full-screen, mobile-first swipe UI (swipe up/down on the study card).
 - Tap-to-flip card: back side fetches abstract text from PubMed (falls back to feed summary if no match).
 - Randomized study ordering from your configured feeds.
+- Additional PubMed stream via `pubmed-sieve`: pulls studies matching `transfusion` in title/abstract (`[tiab]`) from the last 6 months.
 - Feed list managed via `feeds.csv` (no code changes needed to add more journals).
 - Server-side refresh cache (auto refresh every 15 minutes, plus manual refresh button).
 
@@ -41,3 +42,10 @@ Notes:
 - Any other value means enabled
 
 After editing `feeds.csv`, click **Refresh feeds** in the app.
+
+## PubMed Sieve Integration
+
+This app vendors code from [pubmed-sieve](https://github.com/hbhargava7/pubmed-sieve) under `third_party/pubmed_sieve`.
+On refresh, it adds PubMed studies matching:
+
+- `("transfusion"[tiab]) AND ("last 6 months"[dp])`
