@@ -1,0 +1,501 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DoomScroll Studies</title>
+  <style>
+    :root {
+      --bg-1: #f5f2e9;
+      --bg-2: #d8e7ef;
+      --ink: #14212b;
+      --muted: #5b6d79;
+      --accent: #0f766e;
+      --accent-2: #c2410c;
+      --card: #fffef9;
+      --shadow: 0 16px 44px rgba(20, 33, 43, 0.18);
+      --radius: 26px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 15% 15%, rgba(194, 65, 12, 0.12) 0%, rgba(194, 65, 12, 0) 30%),
+        radial-gradient(circle at 85% 10%, rgba(15, 118, 110, 0.14) 0%, rgba(15, 118, 110, 0) 36%),
+        linear-gradient(140deg, var(--bg-1), var(--bg-2));
+      font-family: "Avenir Next", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      display: grid;
+      place-items: center;
+      padding: 20px 12px 16px;
+    }
+
+    .shell {
+      width: min(520px, 100%);
+      height: min(94vh, 900px);
+      display: grid;
+      grid-template-rows: auto 1fr auto auto;
+      gap: 14px;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: 8px;
+      padding: 0 4px;
+    }
+
+    .title {
+      margin: 0;
+      font-size: clamp(1.2rem, 2.8vw, 1.6rem);
+      line-height: 1.1;
+      letter-spacing: 0.02em;
+    }
+
+    .subtitle {
+      margin: 2px 0 0;
+      color: var(--muted);
+      font-size: 0.89rem;
+    }
+
+    .badge {
+      font-size: 0.76rem;
+      font-weight: 700;
+      border-radius: 999px;
+      padding: 6px 10px;
+      background: rgba(20, 33, 43, 0.09);
+      color: var(--ink);
+      white-space: nowrap;
+    }
+
+    .card-wrap {
+      position: relative;
+      overflow: hidden;
+      border-radius: calc(var(--radius) + 8px);
+    }
+
+    .card {
+      height: 100%;
+      width: 100%;
+      background: var(--card);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      transition: transform 220ms ease, opacity 220ms ease;
+      user-select: none;
+      touch-action: pan-x;
+      border: 1px solid rgba(20, 33, 43, 0.07);
+      perspective: 1300px;
+      position: relative;
+    }
+
+    .card-inner {
+      height: 100%;
+      width: 100%;
+      position: relative;
+      transition: transform 380ms ease;
+      transform-style: preserve-3d;
+    }
+
+    .card.flipped .card-inner {
+      transform: rotateY(180deg);
+    }
+
+    .face {
+      position: absolute;
+      inset: 0;
+      padding: 18px 20px 18px;
+      display: grid;
+      grid-template-rows: auto auto auto 1fr auto;
+      gap: 12px;
+      backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
+    }
+
+    .face.back {
+      transform: rotateY(180deg);
+    }
+
+    .card.exit {
+      transform: translateY(calc(var(--exit-y, -40px)));
+      opacity: 0.12;
+    }
+
+    .card.enter {
+      animation: pop-in 240ms ease;
+    }
+
+    @keyframes pop-in {
+      0% { transform: translateY(28px); opacity: 0.16; }
+      100% { transform: translateY(0); opacity: 1; }
+    }
+
+    .journal {
+      display: inline-flex;
+      align-items: center;
+      width: fit-content;
+      border: 1px solid rgba(15, 118, 110, 0.36);
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-weight: 700;
+      font-size: 0.8rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--accent);
+      background: rgba(15, 118, 110, 0.08);
+    }
+
+    .study-title {
+      margin: 0;
+      line-height: 1.18;
+      font-weight: 800;
+      font-size: clamp(1.18rem, 4vw, 1.72rem);
+    }
+
+    .meta {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.9rem;
+      font-weight: 600;
+    }
+
+    .summary {
+      margin: 0;
+      overflow: auto;
+      line-height: 1.47;
+      color: #1f313f;
+      padding-right: 4px;
+      overscroll-behavior: contain;
+      scrollbar-width: thin;
+    }
+
+    .study-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 12px;
+      min-height: 42px;
+      text-decoration: none;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+      color: #fff;
+      background: linear-gradient(120deg, var(--accent), #1f9087);
+      box-shadow: 0 8px 18px rgba(15, 118, 110, 0.25);
+      padding: 10px 12px;
+    }
+
+    .flip-hint {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.78rem;
+      font-weight: 600;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    button {
+      border: 0;
+      border-radius: 14px;
+      min-height: 44px;
+      font-size: 0.94rem;
+      font-weight: 700;
+      color: #fff;
+      cursor: pointer;
+    }
+
+    #next-btn {
+      background: linear-gradient(130deg, var(--accent-2), #ea580c);
+      box-shadow: 0 7px 16px rgba(194, 65, 12, 0.27);
+    }
+
+    #refresh-btn {
+      background: linear-gradient(130deg, #334155, #1f2937);
+      box-shadow: 0 7px 16px rgba(31, 41, 55, 0.24);
+    }
+
+    .status {
+      margin: 0 2px;
+      min-height: 1.2em;
+      color: var(--muted);
+      font-size: 0.86rem;
+      text-align: center;
+    }
+
+    .hint {
+      margin: 2px 2px 0;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.8rem;
+    }
+
+    @media (max-width: 600px) {
+      body {
+        padding: 12px 10px 10px;
+      }
+
+      .shell {
+        height: 96vh;
+        gap: 10px;
+      }
+
+      .face {
+        padding: 14px 14px 14px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="header">
+      <div>
+        <h1 class="title">DoomScroll Studies</h1>
+        <p class="subtitle">Randomized papers from your configured RSS feeds</p>
+      </div>
+      <div class="badge" id="deck-badge">Loading...</div>
+    </header>
+
+    <section class="card-wrap">
+      <article id="study-card" class="card" aria-live="polite">
+        <div class="card-inner">
+          <section class="face front">
+            <div class="journal" id="journal">Loading</div>
+            <h2 class="study-title" id="study-title">Fetching studies...</h2>
+            <p class="meta" id="study-meta">Please wait.</p>
+            <p class="summary" id="study-front-summary">Tap to flip for abstract.</p>
+            <a id="study-link" class="study-link" href="#" target="_blank" rel="noopener noreferrer">Open study</a>
+          </section>
+          <section class="face back">
+            <div class="journal">Abstract</div>
+            <h2 class="study-title" id="study-back-title">Fetching studies...</h2>
+            <p class="meta" id="abstract-meta">Fetching from PubMed...</p>
+            <p class="summary" id="study-abstract">If this is your first run, the app is fetching and parsing your RSS feed list from feeds.csv.</p>
+            <p class="flip-hint">Swipe up/down anytime for next study.</p>
+          </section>
+        </div>
+      </article>
+    </section>
+
+    <section class="controls">
+      <button id="next-btn" type="button">Next study</button>
+      <button id="refresh-btn" type="button">Refresh feeds</button>
+    </section>
+
+    <p class="status" id="status"></p>
+    <p class="hint">Swipe up/down on the card, or tap card to flip</p>
+  </main>
+
+  <script>
+    const card = document.getElementById("study-card");
+    const journalEl = document.getElementById("journal");
+    const titleEl = document.getElementById("study-title");
+    const backTitleEl = document.getElementById("study-back-title");
+    const metaEl = document.getElementById("study-meta");
+    const abstractMetaEl = document.getElementById("abstract-meta");
+    const frontSummaryEl = document.getElementById("study-front-summary");
+    const abstractEl = document.getElementById("study-abstract");
+    const linkEl = document.getElementById("study-link");
+    const statusEl = document.getElementById("status");
+    const badgeEl = document.getElementById("deck-badge");
+    const nextBtn = document.getElementById("next-btn");
+    const refreshBtn = document.getElementById("refresh-btn");
+
+    let loading = false;
+    let touchStartY = null;
+    let touchStartX = null;
+    let lastSwipeAt = 0;
+    let movedDuringTouch = false;
+    let currentStudyId = "";
+    let abstractRequestToken = 0;
+
+    function setStatus(text, isError = false) {
+      statusEl.textContent = text || "";
+      statusEl.style.color = isError ? "#b91c1c" : "";
+    }
+
+    function animateOutThenIn(direction, updater) {
+      card.classList.remove("flipped");
+      card.style.setProperty("--exit-y", direction === "down" ? "48px" : "-48px");
+      card.classList.remove("enter");
+      card.classList.add("exit");
+      setTimeout(() => {
+        updater();
+        card.classList.remove("exit");
+        card.classList.add("enter");
+      }, 180);
+    }
+
+    function renderStudy(study) {
+      card.classList.remove("flipped");
+      currentStudyId = study.id || "";
+      journalEl.textContent = study.journal || "Unknown journal";
+      titleEl.textContent = study.title || "Untitled study";
+      backTitleEl.textContent = study.title || "Untitled study";
+      metaEl.textContent = study.published_label || "Date unavailable";
+      frontSummaryEl.textContent = "Tap to flip for PubMed abstract.";
+      abstractMetaEl.textContent = "Fetching from PubMed...";
+      abstractEl.textContent = "Loading abstract...";
+      loadAbstractForStudy(currentStudyId, study.summary || "No abstract available.");
+
+      if (study.link) {
+        linkEl.href = study.link;
+        linkEl.textContent = "Open study";
+        linkEl.style.opacity = "1";
+        linkEl.style.pointerEvents = "auto";
+      } else {
+        linkEl.href = "#";
+        linkEl.textContent = "No direct link in feed";
+        linkEl.style.opacity = "0.65";
+        linkEl.style.pointerEvents = "none";
+      }
+    }
+
+    async function loadAbstractForStudy(studyId, fallbackSummary) {
+      if (!studyId) {
+        abstractMetaEl.textContent = "No study ID available.";
+        abstractEl.textContent = fallbackSummary;
+        return;
+      }
+
+      const token = ++abstractRequestToken;
+      try {
+        const res = await fetch(`/api/abstract/${encodeURIComponent(studyId)}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+
+        if (token !== abstractRequestToken || studyId !== currentStudyId) return;
+
+        if (!data.ok) {
+          abstractMetaEl.textContent = "PubMed lookup unavailable.";
+          abstractEl.textContent = fallbackSummary;
+          return;
+        }
+
+        const abstractText = (data.abstract || "").trim() || fallbackSummary;
+        abstractEl.textContent = abstractText;
+        if (data.source === "pubmed") {
+          abstractMetaEl.textContent = "Source: PubMed";
+        } else {
+          abstractMetaEl.textContent = "Source: feed summary (PubMed not found)";
+        }
+      } catch (err) {
+        if (token !== abstractRequestToken || studyId !== currentStudyId) return;
+        abstractMetaEl.textContent = "PubMed lookup failed; using feed summary.";
+        abstractEl.textContent = fallbackSummary;
+      }
+    }
+
+    function updateDeckBadge(total, remaining) {
+      if (!Number.isFinite(total) || total <= 0) {
+        badgeEl.textContent = "No studies loaded";
+        return;
+      }
+      badgeEl.textContent = `${remaining} left / ${total} loaded`;
+    }
+
+    async function fetchNextStudy(direction = "up") {
+      if (loading) return;
+      loading = true;
+      setStatus("Loading next study...");
+
+      try {
+        const res = await fetch("/api/next");
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+
+        if (!data.ok || !data.study) {
+          updateDeckBadge(0, 0);
+          setStatus(data.message || "No studies available. Check feeds.csv and refresh.", true);
+          loading = false;
+          return;
+        }
+
+        animateOutThenIn(direction, () => renderStudy(data.study));
+        updateDeckBadge(data.total_loaded, data.remaining_in_deck);
+
+        if (data.message) {
+          setStatus(`Loaded with warnings: ${data.message}`, true);
+        } else {
+          setStatus("");
+        }
+      } catch (err) {
+        setStatus(`Failed to load study: ${err.message}`, true);
+      } finally {
+        loading = false;
+      }
+    }
+
+    async function refreshFeeds() {
+      if (loading) return;
+      loading = true;
+      setStatus("Refreshing feed data...");
+      try {
+        const res = await fetch("/api/refresh", { method: "POST" });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (data.message) {
+          setStatus(`Refresh done with warnings: ${data.message}`, true);
+        } else {
+          setStatus("Feeds refreshed.");
+        }
+        loading = false;
+        await fetchNextStudy("up");
+      } catch (err) {
+        setStatus(`Refresh failed: ${err.message}`, true);
+      } finally {
+        loading = false;
+      }
+    }
+
+    function maybeSwipeToNext(startY, endY, startX, endX) {
+      const dy = startY - endY;
+      const dx = Math.abs(startX - endX);
+      movedDuringTouch = Math.abs(dy) > 14 || dx > 14;
+      const now = Date.now();
+      if (now - lastSwipeAt < 240) return;
+      if (Math.abs(dy) < 50 || dx > 90) return;
+      lastSwipeAt = now;
+      fetchNextStudy(dy > 0 ? "up" : "down");
+    }
+
+    card.addEventListener("touchstart", (ev) => {
+      const t = ev.changedTouches[0];
+      touchStartY = t.clientY;
+      touchStartX = t.clientX;
+      movedDuringTouch = false;
+    }, { passive: true });
+
+    card.addEventListener("touchend", (ev) => {
+      if (touchStartY === null || touchStartX === null) return;
+      const t = ev.changedTouches[0];
+      maybeSwipeToNext(touchStartY, t.clientY, touchStartX, t.clientX);
+      touchStartY = null;
+      touchStartX = null;
+    }, { passive: true });
+
+    card.addEventListener("click", (ev) => {
+      if (ev.target.closest("#study-link")) return;
+      if (movedDuringTouch) return;
+      card.classList.toggle("flipped");
+    });
+
+    card.addEventListener("wheel", (ev) => {
+      if (Math.abs(ev.deltaY) < 28) return;
+      fetchNextStudy(ev.deltaY > 0 ? "up" : "down");
+    }, { passive: true });
+
+    nextBtn.addEventListener("click", () => fetchNextStudy("up"));
+    refreshBtn.addEventListener("click", refreshFeeds);
+
+    fetchNextStudy("up");
+  </script>
+</body>
+</html>
