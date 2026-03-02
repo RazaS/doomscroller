@@ -162,6 +162,21 @@ body {
   will-change: transform, opacity;
 }
 
+.card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: #020202;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 200ms ease;
+  z-index: 9;
+}
+
+.card.blackout::after {
+  opacity: 0.96;
+}
+
 .card.dragging {
   transition: none;
 }

@@ -30,11 +30,13 @@ export default function App() {
   const [cardEnter, setCardEnter] = useState(false);
   const [cardExitY, setCardExitY] = useState("-48px");
   const [cardDragging, setCardDragging] = useState(false);
+  const [cardBlackout, setCardBlackout] = useState(false);
   const [cardStyle, setCardStyle] = useState({ transform: "", opacity: "", transition: "" });
 
   const [loading, setLoading] = useState(false);
   const [signupSuccessFlash, setSignupSuccessFlash] = useState(false);
   const [addedBubbleVisible, setAddedBubbleVisible] = useState(false);
+  const [notTransfusionBusy, setNotTransfusionBusy] = useState(false);
 
   const currentStudyId = currentStudy?.id || "";
 
@@ -570,36 +572,49 @@ export default function App() {
       setStatus("No study loaded yet.", true);
       return;
     }
+    if (notTransfusionBusy) return;
 
     if (!currentUsername) {
       setStatus("Login required to vote 'Not transfusion'.", true);
       return;
     }
 
-    const { res, data } = await apiJson("/api/study/not-transfusion", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ study_id: study.id }),
-    });
+    setNotTransfusionBusy(true);
+    try {
+      const { res, data } = await apiJson("/api/study/not-transfusion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ study_id: study.id }),
+      });
 
-    if (!res.ok || !data.ok) {
-      setStatus(data.message || "Could not submit vote.", true);
-      return;
-    }
+      if (!res.ok || !data.ok) {
+        setStatus(data.message || "Could not remove study.", true);
+        return;
+      }
 
-    setStatus(data.message || "Vote recorded.");
-    logUsage("not_transfusion_vote_ui", {
-      study_id: study.id,
-      votes: Number(data.votes || 0),
-      excluded: Boolean(data.excluded),
-    });
+      setStatus(data.message || "Removed from deck.");
+      logUsage("not_transfusion_vote_ui", {
+        study_id: study.id,
+        votes: Number(data.votes || 0),
+        excluded: Boolean(data.excluded),
+      });
 
-    if (data.excluded) {
       removeStudyFromHistory(study.id);
       if ((currentStudyRef.current?.id || "") === study.id) {
-        setCurrentStudy(null);
-        await showNextStudy("up");
+        setCardFlipped(false);
+        setCardBlackout(true);
+        await delay(220);
+        await showNextStudy("up", {
+          skipTransition: true,
+          keepSwipeVisual: true,
+          triggerEnter: false,
+          suppressLoadingStatus: true,
+        });
+        setCardBlackout(false);
+        triggerCardEnter(280);
       }
+    } finally {
+      setNotTransfusionBusy(false);
     }
   }
 
@@ -817,9 +832,13 @@ export default function App() {
 
   const notTransfusionButtonTitle = !currentStudyId
     ? "Load a study first."
+    : notTransfusionBusy
+      ? "Removing..."
     : !currentUsername
       ? "Login required to vote."
       : "Report this study as not transfusion-related.";
+
+  const notTransfusionButtonLabel = notTransfusionBusy ? "Removing..." : "Not transfusion";
 
   const cardClass = [
     "card",
@@ -827,6 +846,7 @@ export default function App() {
     cardExit ? "exit" : "",
     cardEnter ? "enter" : "",
     cardDragging ? "dragging" : "",
+    cardBlackout ? "blackout" : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -929,10 +949,10 @@ export default function App() {
                     className="study-flag-btn"
                     type="button"
                     title={notTransfusionButtonTitle}
-                    disabled={!currentStudyId}
+                    disabled={!currentStudyId || notTransfusionBusy}
                     onClick={markCurrentStudyNotTransfusion}
                   >
-                    Not transfusion
+                    {notTransfusionButtonLabel}
                   </button>
                 </div>
               </section>
