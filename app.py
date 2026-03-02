@@ -34,6 +34,7 @@ APP_ROOT = Path(__file__).resolve().parent
 FEEDS_CSV_PATH = APP_ROOT / "feeds.csv"
 REFRESH_SECONDS = 15 * 60
 FETCH_INTERVAL_SECONDS = 7 * 24 * 60 * 60
+RUNTIME_APPEND_WINDOW_SECONDS = 7 * 24 * 60 * 60
 MAX_STUDY_AGE_DAYS = 183
 MAX_SUMMARY_LEN = 900
 MAX_ABSTRACT_LEN = 4000
@@ -322,6 +323,71 @@ class StudyDeck:
             return True
         return (time.time() - self.last_fetch_ts) >= FETCH_INTERVAL_SECONDS
 
+    def _study_dedupe_key(self, item: Dict) -> str:
+        key = str(item.get("link") or item.get("id") or "").strip().lower()
+        return key or str(item.get("id") or "")
+
+    def _fetch_external_items(self) -> tuple[List[Dict], List[str]]:
+        feeds = self.load_feeds()
+        all_items: List[Dict] = []
+        errors: List[str] = []
+        if not feeds:
+            errors.append("No RSS feeds configured. Add at least one row to feeds.csv.")
+
+        for feed in feeds:
+            name = feed["name"]
+            url = feed["url"]
+            try:
+                xml_bytes = self.fetch_feed(url)
+                parsed = self.parse_feed_items(xml_bytes, configured_name=name, feed_url=url)
+                all_items.extend(parsed)
+            except (URLError, TimeoutError, ET.ParseError, ValueError) as exc:
+                errors.append(f"{name}: {exc}")
+
+        try:
+            all_items.extend(self.fetch_pubmed_sieve_items())
+        except Exception as exc:
+            errors.append(f"PubMed (pubmed-sieve): {exc}")
+
+        deduped: Dict[str, Dict] = {}
+        for item in all_items:
+            key = self._study_dedupe_key(item)
+            if key and key not in deduped:
+                deduped[key] = item
+        return list(deduped.values()), errors
+
+    def _append_runtime_new_items_locked(self) -> None:
+        all_items, errors = self._fetch_external_items()
+        existing_keys = {self._study_dedupe_key(i) for i in self.items}
+        cutoff_ts = time.time() - RUNTIME_APPEND_WINDOW_SECONDS
+
+        new_items = []
+        for item in all_items:
+            key = self._study_dedupe_key(item)
+            published_ts = float(item.get("published_sort_ts") or 0.0)
+            if not key or key in existing_keys:
+                continue
+            if published_ts <= 0 or published_ts < cutoff_ts:
+                continue
+            existing_keys.add(key)
+            new_items.append(item)
+
+        if new_items:
+            # Keep append order deterministic by publication timestamp.
+            new_items.sort(key=lambda x: float(x.get("published_sort_ts") or 0.0))
+            self.items.extend(new_items)
+            self.items = self._prune_old_studies(self.items)
+            # Append to queue tail so current browsing order is preserved.
+            self.deck.extend(new_items)
+
+        valid_ids = {item["id"] for item in self.items}
+        self.deck = [item for item in self.deck if item.get("id") in valid_ids]
+        self.pubmed_cache = {k: v for k, v in self.pubmed_cache.items() if k in valid_ids}
+        self.last_fetch_ts = time.time()
+        self.last_error = "; ".join(errors) if errors else ""
+        self.last_refresh_ts = time.time()
+        self._save_cache_to_disk()
+
     def fetch_pubmed_sieve_items(self) -> List[Dict]:
         if sieve_helpers is None or sieve_query_builder is None:
             raise RuntimeError(
@@ -388,7 +454,10 @@ class StudyDeck:
         # Runtime mode: never hit external sources. Serve from cached file only.
         if not allow_external_fetch:
             self.items = self._prune_old_studies(self.items)
-            self._rebuild_deck_locked()
+            valid_ids = {item["id"] for item in self.items}
+            self.deck = [item for item in self.deck if item.get("id") in valid_ids]
+            if not self.deck and self.items:
+                self._rebuild_deck_locked()
             if not self.items:
                 self.last_error = (
                     "No cached studies found. Run `python3 scripts/update_studies_cache.py` "
@@ -404,38 +473,9 @@ class StudyDeck:
             self.last_refresh_ts = time.time()
             return
 
-        feeds = self.load_feeds()
-
-        all_items: List[Dict] = []
-        errors: List[str] = []
-        if not feeds:
-            errors.append("No RSS feeds configured. Add at least one row to feeds.csv.")
-
-        for feed in feeds:
-            name = feed["name"]
-            url = feed["url"]
-            try:
-                xml_bytes = self.fetch_feed(url)
-                parsed = self.parse_feed_items(xml_bytes, configured_name=name, feed_url=url)
-                all_items.extend(parsed)
-            except (URLError, TimeoutError, ET.ParseError, ValueError) as exc:
-                errors.append(f"{name}: {exc}")
-
-        try:
-            all_items.extend(self.fetch_pubmed_sieve_items())
-        except Exception as exc:
-            errors.append(f"PubMed (pubmed-sieve): {exc}")
-
-        deduped: Dict[str, Dict] = {}
-        for item in all_items:
-            dedupe_key = (item.get("link") or item["id"]).strip().lower()
-            if not dedupe_key:
-                dedupe_key = item["id"]
-            if dedupe_key not in deduped:
-                deduped[dedupe_key] = item
-
+        all_items, errors = self._fetch_external_items()
         fresh_items = sorted(
-            deduped.values(),
+            all_items,
             key=lambda x: x.get("published_sort_ts", 0.0),
             reverse=True,
         )
@@ -465,6 +505,8 @@ class StudyDeck:
             stale = (time.time() - self.last_refresh_ts) > self.refresh_seconds
             if stale:
                 self._refresh_locked(allow_external_fetch=False)
+            if self._fetch_due():
+                self._append_runtime_new_items_locked()
 
     def get_next(self) -> Dict:
         self.maybe_refresh()
@@ -485,7 +527,7 @@ class StudyDeck:
                     "last_refresh_iso": self._last_refresh_iso(),
                 }
 
-            study = self.deck.pop()
+            study = self.deck.pop(0)
             return {
                 "ok": True,
                 "message": self.last_error,
