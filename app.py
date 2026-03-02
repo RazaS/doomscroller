@@ -306,6 +306,7 @@ class StudyDeck:
         feed_url: str,
         stable_key: str,
     ) -> Dict:
+        now_utc = datetime.now(timezone.utc)
         if not stable_key:
             stable_key = f"{title}:{link}:{feed_url}"
         stable_hash = hashlib.sha1(stable_key.encode("utf-8", errors="ignore")).hexdigest()[:16]
@@ -329,7 +330,32 @@ class StudyDeck:
             "published_iso": published_iso,
             "published_label": published_label,
             "published_sort_ts": published_sort_ts,
+            "first_seen_iso": now_utc.isoformat(),
+            "first_seen_ts": now_utc.timestamp(),
         }
+
+    def _ensure_first_seen(self, item: Dict, fallback_ts: float = 0.0) -> Dict:
+        ts = float(item.get("first_seen_ts") or 0.0)
+        if ts <= 0:
+            ts = float(fallback_ts or 0.0)
+        if ts <= 0:
+            ts = datetime.now(timezone.utc).timestamp()
+
+        item["first_seen_ts"] = ts
+        first_seen_iso = item.get("first_seen_iso")
+        if not first_seen_iso:
+            item["first_seen_iso"] = datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+        return item
+
+    def _preserve_first_seen(self, item: Dict, existing_by_key: Dict[str, Dict]) -> Dict:
+        key = self._study_dedupe_key(item)
+        existing = existing_by_key.get(key) if key else None
+        if existing:
+            return self._ensure_first_seen(
+                item,
+                fallback_ts=float(existing.get("first_seen_ts") or 0.0),
+            )
+        return self._ensure_first_seen(item)
 
     def _rebuild_deck_locked(self) -> None:
         self.deck = self.items.copy()
@@ -340,11 +366,10 @@ class StudyDeck:
         cutoff_ts = cutoff_dt.timestamp()
         pruned: List[Dict] = []
         for item in studies:
-            ts = float(item.get("published_sort_ts") or 0.0)
+            ts = float(item.get("first_seen_ts") or 0.0)
             if ts <= 0:
-                # Keep undated entries; cannot confidently classify as stale.
-                pruned.append(item)
-                continue
+                self._ensure_first_seen(item)
+                ts = float(item.get("first_seen_ts") or 0.0)
             if ts >= cutoff_ts:
                 pruned.append(item)
         return pruned
@@ -360,8 +385,22 @@ class StudyDeck:
             cached_items = payload.get("items", [])
             if not isinstance(cached_items, list):
                 return
-            self.items = self._prune_old_studies(cached_items)
             self.last_fetch_ts = float(payload.get("last_fetch_ts") or 0.0)
+            saved_at_ts = 0.0
+            saved_at_iso = str(payload.get("saved_at_iso") or "").strip()
+            if saved_at_iso:
+                try:
+                    saved_at_ts = datetime.fromisoformat(saved_at_iso).timestamp()
+                except ValueError:
+                    saved_at_ts = 0.0
+
+            first_seen_fallback_ts = self.last_fetch_ts or saved_at_ts
+            normalized_items = [
+                self._ensure_first_seen(dict(item), fallback_ts=first_seen_fallback_ts)
+                for item in cached_items
+                if isinstance(item, dict)
+            ]
+            self.items = self._prune_old_studies(normalized_items)
             self.last_refresh_ts = time.time()
             self._rebuild_deck_locked()
         except Exception:
@@ -436,7 +475,7 @@ class StudyDeck:
             if published_ts <= 0 or published_ts < cutoff_ts:
                 continue
             existing_keys.add(key)
-            new_items.append(item)
+            new_items.append(self._ensure_first_seen(item))
 
         if new_items:
             # Keep append order deterministic by publication timestamp.
@@ -557,6 +596,10 @@ class StudyDeck:
             return
 
         all_items, errors = self._fetch_external_items()
+        existing_by_key = {
+            self._study_dedupe_key(item): item for item in self.items if self._study_dedupe_key(item)
+        }
+        all_items = [self._preserve_first_seen(item, existing_by_key) for item in all_items]
         fresh_items = sorted(
             all_items,
             key=lambda x: x.get("published_sort_ts", 0.0),
