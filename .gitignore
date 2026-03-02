@@ -6,3 +6,4 @@ __pycache__/
 .venv/
 cache/
 data/app.db
+frontend/node_modules/

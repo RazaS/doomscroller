@@ -17,7 +17,7 @@ from urllib.parse import unquote, urlencode
 from urllib.request import Request, urlopen
 import xml.etree.ElementTree as ET
 
-from flask import Flask, jsonify, render_template, request, session
+from flask import Flask, jsonify, request, send_from_directory, session
 from werkzeug.security import check_password_hash, generate_password_hash
 
 try:
@@ -50,6 +50,7 @@ DATA_DIR = APP_ROOT / "data"
 STUDIES_CACHE_PATH = DATA_DIR / "studies_cache.json"
 LEGACY_STUDIES_CACHE_PATH = APP_ROOT / "cache" / "studies_cache.json"
 APP_DB_PATH = DATA_DIR / "app.db"
+FRONTEND_DIST_DIR = APP_ROOT / "frontend" / "dist"
 
 
 def local_name(tag: str) -> str:
@@ -987,7 +988,22 @@ deck = StudyDeck(FEEDS_CSV_PATH)
 
 @app.get("/")
 def index():
-    return render_template("index.html")
+    index_path = FRONTEND_DIST_DIR / "index.html"
+    if index_path.exists():
+        return send_from_directory(FRONTEND_DIST_DIR, "index.html")
+    return (
+        "React frontend not built. Run `npm --prefix frontend install` then "
+        "`npm --prefix frontend run build` and reload.",
+        503,
+    )
+
+
+@app.get("/assets/<path:asset_path>")
+def frontend_assets(asset_path: str):
+    assets_dir = FRONTEND_DIST_DIR / "assets"
+    if assets_dir.exists():
+        return send_from_directory(assets_dir, asset_path)
+    return ("Not Found", 404)
 
 
 @app.get("/api/next")

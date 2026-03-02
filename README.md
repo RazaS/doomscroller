@@ -25,16 +25,26 @@ Default feed is the latest `Transfusion` RSS feed:
 - Offline updater can fetch at most weekly by default; pass `--force` to fetch immediately.
 - Studies are kept for at least 6 months from when they were first pulled.
 
-## Setup
+## Setup (React + Flask)
 
 ```bash
 python3 -m pip install -r requirements.txt
+cd frontend
+npm install
+npm run build
+cd ..
 python3 app.py
 ```
 
 Then open:
 
 - `http://127.0.0.1:5000`
+
+If you change React code in `frontend/src`, rebuild before running Flask:
+
+```bash
+npm --prefix frontend run build
+```
 
 ## Offline Update Workflow
 
