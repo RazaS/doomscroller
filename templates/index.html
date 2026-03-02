@@ -278,7 +278,7 @@
             <h2 class="study-title" id="study-back-title">Fetching studies...</h2>
             <p class="meta" id="abstract-meta">Fetching from PubMed...</p>
             <p class="summary" id="study-abstract">Loading abstract...</p>
-            <p class="flip-hint">Swipe up for previous, swipe down for next.</p>
+            <p class="flip-hint">Swipe up for next, swipe down for previous.</p>
           </section>
         </div>
       </article>
@@ -290,7 +290,7 @@
     </section>
 
     <p class="status" id="status"></p>
-    <p class="hint">Swipe up for previous, down for next. Tap card to flip.</p>
+    <p class="hint">Swipe up for next, down for previous. Tap card to flip.</p>
   </main>
 
   <script>
@@ -520,9 +520,9 @@
       lastSwipeAt = now;
 
       if (dy > 0) {
-        showPreviousStudy("up");
+        showNextStudy("up");
       } else {
-        showNextStudy("down");
+        showPreviousStudy("down");
       }
       return true;
     }
