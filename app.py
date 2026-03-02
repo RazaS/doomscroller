@@ -36,7 +36,7 @@ REFRESH_SECONDS = 15 * 60
 FETCH_INTERVAL_SECONDS = 7 * 24 * 60 * 60
 RUNTIME_APPEND_WINDOW_SECONDS = 7 * 24 * 60 * 60
 MAX_STUDY_AGE_DAYS = 183
-NOT_TRANSFUSION_VOTE_THRESHOLD = 1
+NOT_TRANSFUSION_VOTE_THRESHOLD = 2
 MAX_SUMMARY_LEN = 900
 MAX_ABSTRACT_LEN = 4000
 PUBMED_ESEARCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
@@ -606,7 +606,7 @@ class StudyDeck:
             if self._fetch_due():
                 self._append_runtime_new_items_locked()
 
-    def get_next(self) -> Dict:
+    def get_next(self, excluded_ids: Optional[set[str]] = None) -> Dict:
         self.maybe_refresh()
         with self.lock:
             self._apply_exclusions_locked()
@@ -626,7 +626,32 @@ class StudyDeck:
                     "last_refresh_iso": self._last_refresh_iso(),
                 }
 
-            study = self.deck.pop(0)
+            hidden_ids = excluded_ids or set()
+            study = None
+            if hidden_ids:
+                attempts = len(self.deck)
+                while attempts > 0 and self.deck:
+                    candidate = self.deck.pop(0)
+                    if candidate.get("id") in hidden_ids:
+                        # Keep hidden studies in global pool for other users.
+                        self.deck.append(candidate)
+                    else:
+                        study = candidate
+                        break
+                    attempts -= 1
+            else:
+                study = self.deck.pop(0)
+
+            if study is None:
+                return {
+                    "ok": False,
+                    "message": "No visible studies available for your account right now.",
+                    "study": None,
+                    "total_loaded": len(self.items),
+                    "remaining_in_deck": len(self.deck),
+                    "last_refresh_iso": self._last_refresh_iso(),
+                }
+
             return {
                 "ok": True,
                 "message": self.last_error,
@@ -847,6 +872,18 @@ def init_db() -> None:
 
             CREATE INDEX IF NOT EXISTS idx_study_exclusion_votes_study_id
             ON study_exclusion_votes (study_id);
+
+            CREATE TABLE IF NOT EXISTS user_hidden_studies (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                study_id TEXT NOT NULL,
+                hidden_at TEXT NOT NULL,
+                UNIQUE(user_id, study_id),
+                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_user_hidden_studies_user_id
+            ON user_hidden_studies (user_id);
             """
         )
 
@@ -889,6 +926,30 @@ def get_excluded_study_ids() -> set[str]:
     except Exception:
         # If table does not exist yet or DB is unavailable, treat as no exclusions.
         return set()
+
+
+def get_user_hidden_study_ids(user_id: int) -> set[str]:
+    try:
+        with get_db() as conn:
+            rows = conn.execute(
+                "SELECT study_id FROM user_hidden_studies WHERE user_id = ?",
+                (user_id,),
+            ).fetchall()
+        return {str(r["study_id"] or "").strip() for r in rows if str(r["study_id"] or "").strip()}
+    except Exception:
+        return set()
+
+
+def hide_study_for_user(user_id: int, study_id: str) -> None:
+    with get_db() as conn:
+        conn.execute(
+            """
+            INSERT INTO user_hidden_studies (user_id, study_id, hidden_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(user_id, study_id) DO NOTHING
+            """,
+            (user_id, study_id, now_iso_utc()),
+        )
 
 
 def register_not_transfusion_vote(study_id: str, user_id: int) -> Dict:
@@ -1009,7 +1070,9 @@ def frontend_assets(asset_path: str):
 @app.get("/api/next")
 def api_next():
     track_usage_event("next_api")
-    return jsonify(deck.get_next())
+    user_id = current_user_id()
+    hidden_ids = get_user_hidden_study_ids(int(user_id)) if user_id is not None else set()
+    return jsonify(deck.get_next(excluded_ids=hidden_ids))
 
 
 @app.get("/api/feeds")
@@ -1189,6 +1252,7 @@ def api_study_not_transfusion():
         return jsonify({"ok": False, "message": "study_id is required."}), 400
 
     user_id = int(current_user_id() or 0)
+    hide_study_for_user(user_id, study_id)
     vote = register_not_transfusion_vote(study_id, user_id)
     if vote["excluded"]:
         deck.exclude_study_id(study_id)
@@ -1196,14 +1260,14 @@ def api_study_not_transfusion():
     if vote["excluded_now"]:
         message = (
             f"Removed for everyone ({vote['votes']}/{vote['threshold']} votes). "
-            "It will not appear in future decks."
+            "Hidden from your deck and removed globally."
         )
     elif vote["excluded"]:
-        message = "Already removed for everyone."
+        message = "Already removed for everyone. Hidden from your deck."
     elif vote["already_voted"]:
-        message = f"You already voted ({vote['votes']}/{vote['threshold']})."
+        message = f"Already hidden for you. You already voted ({vote['votes']}/{vote['threshold']})."
     else:
-        message = f"Vote recorded ({vote['votes']}/{vote['threshold']})."
+        message = f"Hidden from your deck. Vote recorded ({vote['votes']}/{vote['threshold']})."
 
     track_usage_event(
         "not_transfusion_vote",
@@ -1213,9 +1277,10 @@ def api_study_not_transfusion():
             "threshold": vote["threshold"],
             "excluded": vote["excluded"],
             "already_voted": vote["already_voted"],
+            "hidden_for_user": True,
         },
     )
-    return jsonify({"ok": True, "message": message, **vote})
+    return jsonify({"ok": True, "message": message, "hidden_for_user": True, **vote})
 
 
 @app.post("/api/usage/event")
