@@ -17,9 +17,7 @@
       --radius: 26px;
     }
 
-    * {
-      box-sizing: border-box;
-    }
+    * { box-sizing: border-box; }
 
     body {
       margin: 0;
@@ -102,33 +100,27 @@
       transform-style: preserve-3d;
     }
 
-    .card.flipped .card-inner {
-      transform: rotateY(180deg);
-    }
+    .card.flipped .card-inner { transform: rotateY(180deg); }
 
     .face {
       position: absolute;
       inset: 0;
       padding: 18px 20px 18px;
       display: grid;
-      grid-template-rows: auto auto auto 1fr auto;
+      grid-template-rows: auto auto auto auto 1fr auto;
       gap: 12px;
       backface-visibility: hidden;
       -webkit-backface-visibility: hidden;
     }
 
-    .face.back {
-      transform: rotateY(180deg);
-    }
+    .face.back { transform: rotateY(180deg); }
 
     .card.exit {
       transform: translateY(calc(var(--exit-y, -40px)));
       opacity: 0.12;
     }
 
-    .card.enter {
-      animation: pop-in 240ms ease;
-    }
+    .card.enter { animation: pop-in 240ms ease; }
 
     @keyframes pop-in {
       0% { transform: translateY(28px); opacity: 0.16; }
@@ -194,11 +186,12 @@
       color: var(--muted);
       font-size: 0.78rem;
       font-weight: 600;
+      line-height: 1.35;
     }
 
     .controls {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: 1fr 1fr 1fr;
       gap: 10px;
     }
 
@@ -206,10 +199,11 @@
       border: 0;
       border-radius: 14px;
       min-height: 44px;
-      font-size: 0.94rem;
+      font-size: 0.88rem;
       font-weight: 700;
       color: #fff;
       cursor: pointer;
+      padding: 8px 6px;
     }
 
     #next-btn {
@@ -220,6 +214,11 @@
     #copy-btn {
       background: linear-gradient(130deg, #334155, #1f2937);
       box-shadow: 0 7px 16px rgba(31, 41, 55, 0.24);
+    }
+
+    #copy-list-btn {
+      background: linear-gradient(130deg, #1d4ed8, #2563eb);
+      box-shadow: 0 7px 16px rgba(37, 99, 235, 0.24);
     }
 
     .status {
@@ -238,18 +237,16 @@
     }
 
     @media (max-width: 600px) {
-      body {
-        padding: 12px 10px 10px;
-      }
+      body { padding: 12px 10px 10px; }
 
       .shell {
         height: 96vh;
         gap: 10px;
       }
 
-      .face {
-        padding: 14px 14px 14px;
-      }
+      .face { padding: 14px 14px 14px; }
+
+      .controls { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -270,6 +267,7 @@
             <div class="journal" id="journal">Loading</div>
             <h2 class="study-title" id="study-title">Fetching studies...</h2>
             <p class="meta" id="study-meta">Please wait.</p>
+            <p class="flip-hint" id="front-instructions">Swipe up: next | Swipe down: previous | Swipe right: save to list | Tap: flip for abstract</p>
             <p class="summary" id="study-front-summary">Tap to flip for abstract.</p>
             <a id="study-link" class="study-link" href="#" target="_blank" rel="noopener noreferrer">Open study</a>
           </section>
@@ -278,7 +276,7 @@
             <h2 class="study-title" id="study-back-title">Fetching studies...</h2>
             <p class="meta" id="abstract-meta">Fetching from PubMed...</p>
             <p class="summary" id="study-abstract">Loading abstract...</p>
-            <p class="flip-hint">Swipe up for next, swipe down for previous.</p>
+            <p class="flip-hint">Swipe up: next | Swipe down: previous | Swipe right: save</p>
           </section>
         </div>
       </article>
@@ -287,10 +285,11 @@
     <section class="controls">
       <button id="next-btn" type="button">Next study</button>
       <button id="copy-btn" type="button">Copy study information</button>
+      <button id="copy-list-btn" type="button">Copy saved list (0)</button>
     </section>
 
     <p class="status" id="status"></p>
-    <p class="hint">Swipe up for next, down for previous. Tap card to flip.</p>
+    <p class="hint">Use vertical swipe to navigate, right swipe to save, tap card to flip.</p>
   </main>
 
   <script>
@@ -307,6 +306,7 @@
     const badgeEl = document.getElementById("deck-badge");
     const nextBtn = document.getElementById("next-btn");
     const copyBtn = document.getElementById("copy-btn");
+    const copyListBtn = document.getElementById("copy-list-btn");
 
     let loading = false;
     let touchStartY = null;
@@ -324,10 +324,16 @@
     const studyHistory = [];
     let latestTotalLoaded = 0;
     let latestRemainingInDeck = 0;
+    const savedStudies = [];
+    const savedStudyIds = new Set();
 
     function setStatus(text, isError = false) {
       statusEl.textContent = text || "";
       statusEl.style.color = isError ? "#b91c1c" : "";
+    }
+
+    function updateSavedListButton() {
+      copyListBtn.textContent = `Copy saved list (${savedStudies.length})`;
     }
 
     function animateOutThenIn(direction, updater) {
@@ -474,51 +480,109 @@
       }
     }
 
+    function buildStudyText(study, abstractText) {
+      return [
+        `Title: ${study.title || ""}`,
+        `Journal: ${study.journal || ""}`,
+        `Published: ${study.published_label || ""}`,
+        `Link: ${study.link || ""}`,
+        "",
+        "Abstract:",
+        abstractText || "",
+      ].join("\n");
+    }
+
+    async function copyTextToClipboard(text) {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+        return;
+      }
+
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.left = "-9999px";
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+    }
+
+    function addCurrentStudyToSavedList() {
+      if (!currentStudy || !currentStudyId) {
+        setStatus("No study loaded yet.", true);
+        return;
+      }
+      if (savedStudyIds.has(currentStudyId)) {
+        setStatus("Study already in saved list.");
+        return;
+      }
+
+      savedStudyIds.add(currentStudyId);
+      savedStudies.push({
+        id: currentStudyId,
+        title: currentStudy.title || "",
+        journal: currentStudy.journal || "",
+        published_label: currentStudy.published_label || "",
+        link: currentStudy.link || "",
+        abstract: abstractEl.textContent || "",
+      });
+      updateSavedListButton();
+      setStatus(`Added to saved list (${savedStudies.length}).`);
+    }
+
     async function copyCurrentStudyInformation() {
       if (!currentStudy) {
         setStatus("No study loaded yet.", true);
         return;
       }
 
-      const text = [
-        `Title: ${currentStudy.title || ""}`,
-        `Journal: ${currentStudy.journal || ""}`,
-        `Published: ${currentStudy.published_label || ""}`,
-        `Link: ${currentStudy.link || ""}`,
-        "",
-        "Abstract:",
-        abstractEl.textContent || "",
-      ].join("\n");
-
       try {
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          await navigator.clipboard.writeText(text);
-        } else {
-          const ta = document.createElement("textarea");
-          ta.value = text;
-          ta.style.position = "fixed";
-          ta.style.left = "-9999px";
-          document.body.appendChild(ta);
-          ta.focus();
-          ta.select();
-          document.execCommand("copy");
-          document.body.removeChild(ta);
-        }
+        await copyTextToClipboard(buildStudyText(currentStudy, abstractEl.textContent || ""));
         setStatus("Study information copied.");
       } catch (err) {
         setStatus(`Copy failed: ${err.message}`, true);
       }
     }
 
+    async function copySavedListInformation() {
+      if (!savedStudies.length) {
+        setStatus("Saved list is empty.", true);
+        return;
+      }
+
+      const body = savedStudies
+        .map((s, i) => `Study ${i + 1}\n${buildStudyText(s, s.abstract)}`)
+        .join("\n\n----------------------------------------\n\n");
+
+      try {
+        await copyTextToClipboard(body);
+        setStatus(`Copied saved list (${savedStudies.length} studies).`);
+      } catch (err) {
+        setStatus(`Copy list failed: ${err.message}`, true);
+      }
+    }
+
     function maybeSwipeNavigate(startY, endY, startX, endX) {
       const dy = startY - endY;
-      const dx = Math.abs(startX - endX);
-      movedDuringTouch = Math.abs(dy) > 14 || dx > 14;
+      const dxSigned = endX - startX;
+      const dxAbs = Math.abs(dxSigned);
+      movedDuringTouch = Math.abs(dy) > 14 || dxAbs > 14;
+
       const now = Date.now();
       if (now - lastSwipeAt < 240) return;
-      if (Math.abs(dy) < 42 || dx > 120 || Math.abs(dy) < (dx * 1.15)) return;
-      lastSwipeAt = now;
 
+      // Right swipe = save current study to list.
+      if (dxSigned > 56 && dxAbs > (Math.abs(dy) * 1.2) && Math.abs(dy) < 100) {
+        lastSwipeAt = now;
+        addCurrentStudyToSavedList();
+        return true;
+      }
+
+      // Vertical swipe = navigation.
+      if (Math.abs(dy) < 42 || dxAbs > 120 || Math.abs(dy) < (dxAbs * 1.15)) return;
+      lastSwipeAt = now;
       if (dy > 0) {
         showNextStudy("up");
       } else {
@@ -544,14 +608,13 @@
       touchCurrentY = t.clientY;
       touchCurrentX = t.clientX;
       const dy = touchStartY - touchCurrentY;
-      const dx = Math.abs(touchStartX - touchCurrentX);
-      movedDuringTouch = Math.abs(dy) > 14 || dx > 14;
+      const dxSigned = touchCurrentX - touchStartX;
+      const dxAbs = Math.abs(dxSigned);
+      movedDuringTouch = Math.abs(dy) > 14 || dxAbs > 14;
 
-      if (touchStartedInAbstract) {
-        return;
-      }
+      if (touchStartedInAbstract) return;
 
-      if (Math.abs(dy) > 24 && Math.abs(dy) > (dx * 1.2)) {
+      if ((Math.abs(dy) > 24 && Math.abs(dy) > (dxAbs * 1.2)) || (dxSigned > 24 && dxAbs > (Math.abs(dy) * 1.2))) {
         ev.preventDefault();
       }
 
@@ -577,6 +640,7 @@
       if (!swipeConsumed) {
         maybeSwipeNavigate(touchStartY, t.clientY, touchStartX, t.clientX);
       }
+
       touchStartY = null;
       touchStartX = null;
       touchCurrentY = null;
@@ -593,9 +657,7 @@
 
     card.addEventListener("wheel", (ev) => {
       if (Math.abs(ev.deltaY) < 28) return;
-      if (card.classList.contains("flipped") && ev.target.closest("#study-abstract")) {
-        return;
-      }
+      if (card.classList.contains("flipped") && ev.target.closest("#study-abstract")) return;
 
       if (ev.deltaY < 0) {
         showPreviousStudy("up");
@@ -606,7 +668,9 @@
 
     nextBtn.addEventListener("click", () => showNextStudy("down"));
     copyBtn.addEventListener("click", copyCurrentStudyInformation);
+    copyListBtn.addEventListener("click", copySavedListInformation);
 
+    updateSavedListButton();
     showNextStudy("down");
   </script>
 </body>
