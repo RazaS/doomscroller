@@ -35,13 +35,14 @@ body {
   place-items: center;
   padding:
     max(var(--viewport-pad), env(safe-area-inset-top))
-    max(var(--viewport-pad), env(safe-area-inset-right))
+    var(--viewport-pad)
     max(var(--viewport-pad), env(safe-area-inset-bottom))
-    max(var(--viewport-pad), env(safe-area-inset-left));
+    var(--viewport-pad);
 }
 
 .shell {
-  width: min(620px, 100%);
+  width: min(620px, calc(100vw - (2 * var(--viewport-pad))));
+  max-width: 100%;
   height: min(
     980px,
     calc(100dvh - (2 * var(--viewport-pad)) - env(safe-area-inset-top) - env(safe-area-inset-bottom))
