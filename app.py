@@ -716,6 +716,18 @@ def init_db() -> None:
                 UNIQUE(user_id, study_id),
                 FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
             );
+
+            CREATE TABLE IF NOT EXISTS usage_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                username TEXT,
+                event_type TEXT NOT NULL,
+                meta_json TEXT,
+                user_agent TEXT,
+                ip_address TEXT,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL
+            );
             """
         )
 
@@ -750,6 +762,40 @@ def require_user() -> Optional[Dict]:
     return None
 
 
+def client_ip() -> str:
+    xff = str(request.headers.get("X-Forwarded-For") or "").strip()
+    if xff:
+        return xff.split(",")[0].strip()
+    return str(request.remote_addr or "")
+
+
+def track_usage_event(event_type: str, meta: Optional[Dict] = None) -> None:
+    try:
+        meta = meta or {}
+        user_id = current_user_id()
+        username = current_user_username() if user_id is not None else ""
+        user_agent = str(request.headers.get("User-Agent") or "")
+        with get_db() as conn:
+            conn.execute(
+                """
+                INSERT INTO usage_events (user_id, username, event_type, meta_json, user_agent, ip_address, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    user_id,
+                    username,
+                    event_type,
+                    json.dumps(meta, ensure_ascii=True),
+                    user_agent,
+                    client_ip(),
+                    now_iso_utc(),
+                ),
+            )
+    except Exception:
+        # Usage tracking must never break app flows.
+        return
+
+
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY") or "dev-secret-change-me"
 deck = StudyDeck(FEEDS_CSV_PATH)
@@ -763,6 +809,7 @@ def index():
 
 @app.get("/api/next")
 def api_next():
+    track_usage_event("next_api")
     return jsonify(deck.get_next())
 
 
@@ -786,6 +833,7 @@ def api_refresh():
 
 @app.get("/api/abstract/<study_id>")
 def api_abstract(study_id: str):
+    track_usage_event("abstract_api", {"study_id": study_id})
     return jsonify(deck.get_abstract(study_id))
 
 
@@ -820,6 +868,7 @@ def api_signup():
 
     session["user_id"] = user_id
     session["username"] = username
+    track_usage_event("signup", {"username": username})
     return jsonify({"ok": True, "message": "Account created.", "username": username})
 
 
@@ -841,11 +890,13 @@ def api_login():
 
     session["user_id"] = int(row["id"])
     session["username"] = str(row["username"])
+    track_usage_event("login", {"username": str(row["username"])})
     return jsonify({"ok": True, "message": "Logged in.", "username": str(row["username"])})
 
 
 @app.post("/api/logout")
 def api_logout():
+    track_usage_event("logout")
     session.clear()
     return jsonify({"ok": True, "message": "Logged out."})
 
@@ -923,7 +974,61 @@ def api_archive_add():
             (user_id, study_id, title, journal, published_label, link, abstract_text, saved_at),
         )
 
+    track_usage_event("archive_save", {"study_id": study_id})
     return jsonify({"ok": True, "message": "Saved to your archive."})
+
+
+@app.post("/api/usage/event")
+def api_usage_event():
+    payload = request.get_json(silent=True) or {}
+    event_type = str(payload.get("event_type") or "").strip().lower()
+    if not event_type:
+        return jsonify({"ok": False, "message": "event_type is required."}), 400
+    meta = payload.get("meta")
+    if not isinstance(meta, dict):
+        meta = {}
+    track_usage_event(event_type, meta)
+    return jsonify({"ok": True})
+
+
+@app.get("/api/usage/summary")
+def api_usage_summary():
+    unauth = require_user()
+    if unauth:
+        return jsonify(unauth), 401
+
+    user_id = int(current_user_id() or 0)
+    with get_db() as conn:
+        total_user_events = int(
+            conn.execute("SELECT COUNT(*) AS c FROM usage_events WHERE user_id = ?", (user_id,)).fetchone()["c"]
+        )
+        total_user_archive_saves = int(
+            conn.execute(
+                "SELECT COUNT(*) AS c FROM usage_events WHERE user_id = ? AND event_type = 'archive_save'",
+                (user_id,),
+            ).fetchone()["c"]
+        )
+        total_global_events = int(conn.execute("SELECT COUNT(*) AS c FROM usage_events").fetchone()["c"])
+        recent_global_events = int(
+            conn.execute(
+                "SELECT COUNT(*) AS c FROM usage_events WHERE created_at >= ?",
+                ((datetime.now(timezone.utc) - timedelta(days=7)).isoformat(),),
+            ).fetchone()["c"]
+        )
+    return jsonify(
+        {
+            "ok": True,
+            "user": {
+                "username": current_user_username(),
+                "total_events": total_user_events,
+                "archive_saves": total_user_archive_saves,
+            },
+            "global": {
+                "total_events": total_global_events,
+                "last_7d_events": recent_global_events,
+            },
+        }
+    )
 
 
 if __name__ == "__main__":

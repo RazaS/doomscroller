@@ -10,6 +10,7 @@ Default feed is the latest `Transfusion` RSS feed:
 
 - Full-screen, mobile-first swipe UI (swipe up/down on the study card).
 - User accounts (signup/login/logout) with personal archived studies.
+- Built-in usage tracking (event log in SQLite) for app opens, navigation, archive saves, and copy actions.
 - Swipe right saves current study to your personal archive.
 - Archive button opens your saved list; copy buttons support current study and full archive list.
 - Tap-to-flip card: back side fetches abstract text from PubMed (falls back to feed summary if no match).

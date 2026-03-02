@@ -357,7 +357,7 @@
     <header class="header">
       <div>
         <h1 class="title">TMScroll Studies</h1>
-        <p class="subtitle">Randomized papers from your configured RSS feeds</p>
+        <p class="subtitle">Doom scroll through the latest in transfusion science</p>
       </div>
       <div class="badge" id="deck-badge">Loading...</div>
     </header>
@@ -402,7 +402,7 @@
     </section>
 
     <p class="status" id="status"></p>
-    <p class="hint">Buttons are compact to stay on one row when space allows.</p>
+    <p class="hint"></p>
   </main>
 
   <section class="archive-panel" id="archive-panel">
@@ -488,6 +488,14 @@
       return { res, data };
     }
 
+    function logUsage(eventType, meta = {}) {
+      fetch("/api/usage/event", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ event_type: eventType, meta }),
+      }).catch(() => {});
+    }
+
     async function syncAuthState() {
       const { data } = await apiJson("/api/me");
       currentUsername = data.authenticated ? (data.username || "") : "";
@@ -521,6 +529,7 @@
       updateAuthUI();
       await fetchArchive();
       setStatus("Account created and logged in.");
+      logUsage("signup_ui");
     }
 
     async function login() {
@@ -544,6 +553,7 @@
       updateAuthUI();
       await fetchArchive();
       setStatus("Logged in.");
+      logUsage("login_ui");
     }
 
     async function logout() {
@@ -553,6 +563,7 @@
       updateAuthUI();
       updateArchiveButton();
       setStatus("Logged out.");
+      logUsage("logout_ui");
     }
 
     function animateOutThenIn(direction, updater) {
@@ -658,6 +669,7 @@
       }
       historyIndex -= 1;
       renderHistoryEntry(studyHistory[historyIndex], direction);
+      logUsage("previous_study", { index: historyIndex });
     }
 
     async function showNextStudy(direction = "down") {
@@ -666,6 +678,7 @@
       if (historyIndex < studyHistory.length - 1) {
         historyIndex += 1;
         renderHistoryEntry(studyHistory[historyIndex], direction);
+        logUsage("next_study_history", { index: historyIndex });
         return;
       }
 
@@ -691,6 +704,7 @@
         studyHistory.push(entry);
         historyIndex = studyHistory.length - 1;
         renderHistoryEntry(entry, direction);
+        logUsage("next_study_fetched", { study_id: entry.study.id || "" });
       } catch (err) {
         setStatus(`Failed to load study: ${err.message}`, true);
       } finally {
@@ -771,6 +785,7 @@
       }
       await fetchArchive();
       setStatus("Saved to your personal archive.");
+      logUsage("archive_save_ui", { study_id: currentStudyId });
     }
 
     function renderArchivePanel() {
@@ -797,6 +812,7 @@
       await fetchArchive();
       renderArchivePanel();
       archivePanel.classList.add("open");
+      logUsage("open_archive_panel", { count: archiveEntries.length });
     }
 
     async function copyCurrentStudyInformation() {
@@ -807,6 +823,7 @@
       try {
         await copyTextToClipboard(buildStudyText(currentStudy, abstractEl.textContent || ""));
         setStatus("Study information copied.");
+        logUsage("copy_current_study", { study_id: currentStudyId });
       } catch (err) {
         setStatus(`Copy failed: ${err.message}`, true);
       }
@@ -830,6 +847,7 @@
       try {
         await copyTextToClipboard(body);
         setStatus(`Copied archive list (${archiveEntries.length} studies).`);
+        logUsage("copy_archive_list", { count: archiveEntries.length });
       } catch (err) {
         setStatus(`Copy list failed: ${err.message}`, true);
       }
@@ -953,6 +971,7 @@
     updateArchiveButton();
     syncAuthState();
     showNextStudy("down");
+    logUsage("app_open");
   </script>
 </body>
 </html>
