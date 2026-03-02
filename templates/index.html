@@ -191,7 +191,7 @@
 
     .controls {
       display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
+      grid-template-columns: 1fr 1fr 1fr 1fr;
       gap: 10px;
     }
 
@@ -209,6 +209,11 @@
     #next-btn {
       background: linear-gradient(130deg, var(--accent-2), #ea580c);
       box-shadow: 0 7px 16px rgba(194, 65, 12, 0.27);
+    }
+
+    #prev-btn {
+      background: linear-gradient(130deg, #9a3412, #c2410c);
+      box-shadow: 0 7px 16px rgba(154, 52, 18, 0.27);
     }
 
     #copy-btn {
@@ -283,9 +288,10 @@
     </section>
 
     <section class="controls">
-      <button id="next-btn" type="button">Next study</button>
-      <button id="copy-btn" type="button">Copy study information</button>
-      <button id="copy-list-btn" type="button">Copy saved list (0)</button>
+      <button id="prev-btn" type="button">←</button>
+      <button id="next-btn" type="button">→</button>
+      <button id="copy-btn" type="button">Copy</button>
+      <button id="copy-list-btn" type="button">Copy List (0)</button>
     </section>
 
     <p class="status" id="status"></p>
@@ -304,6 +310,7 @@
     const linkEl = document.getElementById("study-link");
     const statusEl = document.getElementById("status");
     const badgeEl = document.getElementById("deck-badge");
+    const prevBtn = document.getElementById("prev-btn");
     const nextBtn = document.getElementById("next-btn");
     const copyBtn = document.getElementById("copy-btn");
     const copyListBtn = document.getElementById("copy-list-btn");
@@ -333,7 +340,7 @@
     }
 
     function updateSavedListButton() {
-      copyListBtn.textContent = `Copy saved list (${savedStudies.length})`;
+      copyListBtn.textContent = `Copy List (${savedStudies.length})`;
     }
 
     function animateOutThenIn(direction, updater) {
@@ -666,6 +673,7 @@
       }
     }, { passive: true });
 
+    prevBtn.addEventListener("click", () => showPreviousStudy("down"));
     nextBtn.addEventListener("click", () => showNextStudy("down"));
     copyBtn.addEventListener("click", copyCurrentStudyInformation);
     copyListBtn.addEventListener("click", copySavedListInformation);
