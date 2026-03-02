@@ -42,7 +42,60 @@ PUBMED_ESEARCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi
 PUBMED_EFETCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
 DOI_RE = re.compile(r"\b10\.\d{4,9}/[-._;()/:a-z0-9]+\b", re.IGNORECASE)
 TRANSFUSION_TERM_RE = re.compile(r"\b(?:transfusion|transfused|transfusing)\b", re.IGNORECASE)
-PUBMED_SIEVE_QUERY_TERM = "transfusion"
+PUBMED_SIEVE_QUERY_TERMS = ["transfusion", "transfused", "transfusing"]
+PUBMED_SIEVE_AUTHOR_TERMS = [
+    "Alter HJ [au]",
+    "Busch MP [au]",
+    "Carson JL [au]",
+    "Stanworth SJ [au]",
+    "Callum J [au]",
+    "D'Alessandro A [au]",
+    "Westhoff CM [au]",
+    "Hebert PC [au]",
+    "Arnold DM [au]",
+    "McQuilten Z [au]",
+    "June CH [au]",
+    "Devine D [au]",
+    "Flegel WA [au]",
+    "Peyrard T [au]",
+    "Roberts I [au]",
+    "Spitalnik SL [au]",
+    "Custer B [au]",
+    "Josephson CD [au]",
+    "Ghevaert C [au]",
+    "Toye AJ [au]",
+    "Eto K [au]",
+    "Bloch EM [au]",
+    "Fijnvandraat K [au]",
+    "Storry J [au]",
+    "van der Schoot E [au]",
+    "Burnouf T [au]",
+    "Heddle N [au]",
+    "Fergusson D [au]",
+    "Stramer SL [au]",
+    "Dodd RY [au]",
+    "Katz LM [au]",
+    "Erikstrup C [au]",
+    "de Castilho LM [au]",
+    "Lozano M [au]",
+    "So-Osman C [au]",
+    "Schubert P [au]",
+    "Al-Riyami AZ [au]",
+    "Zeller M [au]",
+    "Tinmouth A [au]",
+    "Denomme G [au]",
+    "Nance SJ [au]",
+    "Epstein JS [au]",
+    "O'Brien SF [au]",
+    "Drews SJ [au]",
+    "Siegel DL [au]",
+    "Engleman E [au]",
+    "Williams DA [au]",
+    "Rebulla P [au]",
+    "Rock G [au]",
+    "Choudhury N [au]",
+    "Edgren G [au]",
+]
 PUBMED_SIEVE_DATE_FILTER = "\"last 6 months\"[dp]"
 PUBMED_SIEVE_MAX_ITEMS = 150
 DATA_DIR = APP_ROOT / "data"
@@ -412,24 +465,41 @@ class StudyDeck:
         if hasattr(sieve_helpers, "Entrez"):
             sieve_helpers.Entrez.email = "doomscroll-studies@example.com"
 
-        base_query = sieve_query_builder.build_keyword_and_journal_query(
-            keywords=[PUBMED_SIEVE_QUERY_TERM],
+        keyword_base_query = sieve_query_builder.build_keyword_and_journal_query(
+            keywords=PUBMED_SIEVE_QUERY_TERMS,
             journals=[],
             require_hasabstract=False,
         )
-        if not base_query:
+        queries: List[str] = []
+        if keyword_base_query:
+            queries.append(f"({keyword_base_query}) AND ({PUBMED_SIEVE_DATE_FILTER})")
+        if PUBMED_SIEVE_AUTHOR_TERMS:
+            author_query = " OR ".join(f"({term})" for term in PUBMED_SIEVE_AUTHOR_TERMS)
+            queries.append(f"({author_query}) AND ({PUBMED_SIEVE_DATE_FILTER})")
+        if not queries:
             return []
 
-        query = f"({base_query}) AND ({PUBMED_SIEVE_DATE_FILTER})"
-        df = sieve_helpers.pubmed_articles_for_query(query)
-        if df is None or len(df) == 0:
-            return []
+        records: List[Dict] = []
+        seen_pmids = set()
+        for query in queries:
+            df = sieve_helpers.pubmed_articles_for_query(query)
+            if df is None or len(df) == 0:
+                continue
+            if len(df) > PUBMED_SIEVE_MAX_ITEMS:
+                df = df.head(PUBMED_SIEVE_MAX_ITEMS)
+            for row in df.to_dict(orient="records"):
+                pmid = str(row.get("PMID") or "").strip()
+                dedupe_key = pmid or str(row.get("Title") or "").strip().lower()
+                if dedupe_key in seen_pmids:
+                    continue
+                seen_pmids.add(dedupe_key)
+                records.append(row)
 
-        if len(df) > PUBMED_SIEVE_MAX_ITEMS:
-            df = df.head(PUBMED_SIEVE_MAX_ITEMS)
+        if not records:
+            return []
 
         parsed: List[Dict] = []
-        for row in df.to_dict(orient="records"):
+        for row in records:
             pmid = str(row.get("PMID") or "").strip()
             title = str(row.get("Title") or "").strip() or "Untitled PubMed study"
             journal = str(row.get("Journal") or "").strip() or "PubMed"
@@ -442,7 +512,7 @@ class StudyDeck:
                     summary=abstract or "No abstract available from PubMed.",
                     published_dt=published_dt,
                     journal_name=journal,
-                    feed_url=f"pubmed-sieve:{PUBMED_SIEVE_QUERY_TERM}",
+                    feed_url=f"pubmed-sieve:{'|'.join(PUBMED_SIEVE_QUERY_TERMS)}+authors",
                     stable_key=f"pubmed-sieve:{pmid or title}",
                 )
             )

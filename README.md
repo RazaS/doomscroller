@@ -15,7 +15,8 @@ Default feed is the latest `Transfusion` RSS feed:
 - Archive button opens your saved list; copy buttons support current study and full archive list.
 - Tap-to-flip card: back side fetches abstract text from PubMed (falls back to feed summary if no match).
 - Randomized study ordering from your configured feeds.
-- Additional PubMed stream via `pubmed-sieve`: pulls studies matching `transfusion` in title/abstract (`[tiab]`) from the last 6 months.
+- Additional PubMed stream via `pubmed-sieve`: pulls studies matching `transfusion`, `transfused`, or `transfusing` in title/abstract (`[tiab]`) from the last 6 months.
+- Additional PubMed author stream via `pubmed-sieve`: also includes recent studies by the configured transfusion author list (`[au]` terms).
 - Feed list managed via `feeds.csv` (no code changes needed to add more journals).
 - RSS/Atom feed items are only kept if title or abstract/summary contains one of: `transfusion`, `transfused`, `transfusing`.
 - Runtime starts from persisted cache (`data/studies_cache.json`) for fast initial load.
@@ -78,4 +79,4 @@ After editing `feeds.csv`, run `python3 scripts/update_studies_cache.py` and the
 This app vendors code from [pubmed-sieve](https://github.com/hbhargava7/pubmed-sieve) under `third_party/pubmed_sieve`.
 During offline cache update, it adds PubMed studies matching:
 
-- `("transfusion"[tiab]) AND ("last 6 months"[dp])`
+- `(("transfusion"[tiab]) OR ("transfused"[tiab]) OR ("transfusing"[tiab])) AND ("last 6 months"[dp])`
