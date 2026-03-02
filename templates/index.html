@@ -37,7 +37,7 @@
       width: min(620px, 100%);
       height: min(96vh, 980px);
       display: grid;
-      grid-template-rows: auto auto 1fr auto auto;
+      grid-template-rows: auto auto auto 1fr auto auto;
       gap: 10px;
     }
 
@@ -117,6 +117,7 @@
       position: relative;
       overflow: hidden;
       border-radius: calc(var(--radius) + 8px);
+      min-height: 0;
     }
 
     .card {
