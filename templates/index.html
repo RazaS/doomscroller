@@ -138,10 +138,6 @@
       transition: none;
     }
 
-    .card.archive-swipe {
-      animation: archive-swipe 280ms cubic-bezier(0.2, 0.8, 0.2, 1);
-    }
-
     .card-inner {
       height: 100%;
       width: 100%;
@@ -175,12 +171,6 @@
     @keyframes pop-in {
       0% { transform: translateY(28px); opacity: 0.16; }
       100% { transform: translateY(0); opacity: 1; }
-    }
-
-    @keyframes archive-swipe {
-      0% { transform: translateX(0) rotate(0deg); opacity: 1; }
-      45% { transform: translateX(92px) rotate(4deg); opacity: 0.82; }
-      100% { transform: translateX(0) rotate(0deg); opacity: 1; }
     }
 
     .journal {
@@ -511,6 +501,7 @@
     let latestRemainingInDeck = 0;
     let archiveEntries = [];
     let currentUsername = "";
+    let swipeResetTimer = null;
 
     function setStatus(text, isError = false) {
       statusEl.textContent = text || "";
@@ -668,17 +659,43 @@
     }
 
     function resetSwipeVisual() {
-      card.classList.remove("dragging", "archive-swipe");
+      if (swipeResetTimer) {
+        clearTimeout(swipeResetTimer);
+        swipeResetTimer = null;
+      }
+      card.classList.remove("dragging");
+      card.style.transition = "";
       card.style.transform = "";
       card.style.opacity = "";
     }
 
     function playArchiveSwipeVisual() {
-      resetSwipeVisual();
-      card.classList.remove("archive-swipe");
-      void card.offsetWidth;
-      card.classList.add("archive-swipe");
-      setTimeout(() => card.classList.remove("archive-swipe"), 300);
+      if (swipeResetTimer) {
+        clearTimeout(swipeResetTimer);
+        swipeResetTimer = null;
+      }
+
+      card.classList.remove("dragging");
+      const startTransform = card.style.transform || "translate3d(0px, 0px, 0px) rotate(0deg)";
+      const exitX = Math.max(window.innerWidth * 1.15, 420);
+
+      card.style.transition = "transform 280ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 280ms ease";
+      card.style.transform = startTransform;
+      card.style.opacity = card.style.opacity || "1";
+
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          card.style.transform = `translate3d(${exitX}px, 0px, 0px) rotate(11deg)`;
+          card.style.opacity = "0.06";
+        });
+      });
+
+      swipeResetTimer = setTimeout(() => {
+        swipeResetTimer = null;
+        card.style.transition = "";
+        card.style.transform = "";
+        card.style.opacity = "";
+      }, 300);
     }
 
     function renderStudy(study) {
