@@ -1,4 +1,4 @@
-# DoomScroll Studies
+# TMScroll Studies
 
 Python web app for "TikTok-like" doom scrolling through scientific studies from RSS feeds.
 
