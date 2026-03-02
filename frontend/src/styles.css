@@ -8,6 +8,7 @@
   --card: #fffef9;
   --shadow: 0 16px 44px rgba(20, 33, 43, 0.18);
   --radius: 26px;
+  --viewport-pad: 10px;
 }
 
 * {
@@ -18,10 +19,12 @@ html,
 body,
 #root {
   margin: 0;
-  min-height: 100%;
+  height: 100%;
+  overflow: hidden;
 }
 
 body {
+  min-height: 100dvh;
   color: var(--ink);
   background:
     radial-gradient(circle at 15% 15%, rgba(194, 65, 12, 0.12) 0%, rgba(194, 65, 12, 0) 30%),
@@ -30,15 +33,24 @@ body {
   font-family: "Avenir Next", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
   display: grid;
   place-items: center;
-  padding: 14px 10px 12px;
+  padding:
+    max(var(--viewport-pad), env(safe-area-inset-top))
+    max(var(--viewport-pad), env(safe-area-inset-right))
+    max(var(--viewport-pad), env(safe-area-inset-bottom))
+    max(var(--viewport-pad), env(safe-area-inset-left));
 }
 
 .shell {
   width: min(620px, 100%);
-  height: min(96vh, 980px);
+  height: min(
+    980px,
+    calc(100dvh - (2 * var(--viewport-pad)) - env(safe-area-inset-top) - env(safe-area-inset-bottom))
+  );
+  max-height: 100%;
   display: grid;
   grid-template-rows: auto auto auto 1fr auto auto;
-  gap: 10px;
+  gap: 8px;
+  overflow: hidden;
 }
 
 .header {
@@ -132,6 +144,7 @@ body {
   overflow: hidden;
   border-radius: calc(var(--radius) + 8px);
   min-height: 0;
+  contain: layout paint;
 }
 
 .card {
@@ -338,6 +351,30 @@ body {
   text-align: center;
 }
 
+.added-bubble {
+  position: fixed;
+  top: max(12px, calc(env(safe-area-inset-top) + 8px));
+  left: 50%;
+  z-index: 120;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(4, 120, 87, 0.96);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  box-shadow: 0 10px 24px rgba(4, 120, 87, 0.35);
+  pointer-events: none;
+  transform: translate(-50%, -12px) scale(0.96);
+  opacity: 0;
+  transition: transform 220ms cubic-bezier(0.2, 0.86, 0.2, 1), opacity 220ms ease;
+}
+
+.added-bubble.show {
+  opacity: 1;
+  transform: translate(-50%, 0) scale(1);
+}
+
 .hint {
   margin: 2px 2px 0;
   text-align: center;
@@ -424,8 +461,19 @@ body {
 }
 
 @media (max-width: 760px) {
+  :root {
+    --viewport-pad: 8px;
+  }
+
   .auth-row {
     grid-template-columns: 1fr 1fr;
+    gap: 5px;
+  }
+
+  .auth-row input,
+  .auth-btn,
+  .ctl-btn {
+    min-height: 32px;
   }
 
   .auth-state {
@@ -438,6 +486,33 @@ body {
 }
 
 @media (max-width: 520px) {
+  .shell {
+    gap: 6px;
+  }
+
+  .title {
+    font-size: clamp(1rem, 5.2vw, 1.2rem);
+  }
+
+  .subtitle {
+    font-size: 0.76rem;
+  }
+
+  .study-title {
+    font-size: clamp(0.98rem, 4.8vw, 1.2rem);
+  }
+
+  .face {
+    padding: 12px 12px 12px;
+    gap: 8px;
+  }
+
+  .flip-hint,
+  .meta,
+  .summary {
+    font-size: 0.78rem;
+  }
+
   .controls {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

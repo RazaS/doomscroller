@@ -34,6 +34,7 @@ export default function App() {
 
   const [loading, setLoading] = useState(false);
   const [signupSuccessFlash, setSignupSuccessFlash] = useState(false);
+  const [addedBubbleVisible, setAddedBubbleVisible] = useState(false);
 
   const currentStudyId = currentStudy?.id || "";
 
@@ -47,6 +48,7 @@ export default function App() {
 
   const abstractRequestTokenRef = useRef(0);
   const signupFlashTimerRef = useRef(null);
+  const addedBubbleTimerRef = useRef(null);
   const exitTimerRef = useRef(null);
   const enterTimerRef = useRef(null);
   const swipeResetTimerRef = useRef(null);
@@ -78,7 +80,7 @@ export default function App() {
 
   useEffect(() => {
     return () => {
-      [signupFlashTimerRef, exitTimerRef, enterTimerRef, swipeResetTimerRef].forEach((timerRef) => {
+      [signupFlashTimerRef, addedBubbleTimerRef, exitTimerRef, enterTimerRef, swipeResetTimerRef].forEach((timerRef) => {
         if (timerRef.current) {
           clearTimeout(timerRef.current);
           timerRef.current = null;
@@ -143,6 +145,11 @@ export default function App() {
     return new Promise((resolve) => window.setTimeout(resolve, ms));
   }
 
+  function showAddedBubble() {
+    setAddedBubbleVisible(true);
+    setTimeoutTracked(addedBubbleTimerRef, () => setAddedBubbleVisible(false), 850);
+  }
+
   function resetSwipeVisual() {
     if (swipeResetTimerRef.current) {
       clearTimeout(swipeResetTimerRef.current);
@@ -198,10 +205,10 @@ export default function App() {
 
     setCardDragging(false);
     const startTransform = cardStyleRef.current.transform || "translate3d(0px, 0px, 0px) rotate(0deg)";
-    const exitX = Math.max(window.innerWidth * 1.15, 420);
+    const exitX = Math.max(window.innerWidth * 1.6, 760);
 
     setCardStyle({
-      transition: "transform 280ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 280ms ease",
+      transition: "transform 360ms cubic-bezier(0.2, 0.82, 0.2, 1), opacity 360ms ease",
       transform: startTransform,
       opacity: cardStyleRef.current.opacity || "1",
     });
@@ -209,17 +216,12 @@ export default function App() {
     swipeRafOneRef.current = requestAnimationFrame(() => {
       swipeRafTwoRef.current = requestAnimationFrame(() => {
         setCardStyle({
-          transition: "transform 280ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 280ms ease",
-          transform: `translate3d(${exitX}px, 0px, 0px) rotate(11deg)`,
-          opacity: "0.06",
+          transition: "transform 360ms cubic-bezier(0.2, 0.82, 0.2, 1), opacity 360ms ease",
+          transform: `translate3d(${exitX}px, 22px, 0px) rotate(16deg)`,
+          opacity: "0.02",
         });
       });
     });
-
-    swipeResetTimerRef.current = window.setTimeout(() => {
-      swipeResetTimerRef.current = null;
-      setCardStyle({ transform: "", opacity: "", transition: "" });
-    }, 340);
   }
 
   function triggerCardEnter(ms = 340) {
@@ -304,10 +306,14 @@ export default function App() {
   function renderHistoryEntry(entry, direction, options = {}) {
     const skipTransition = Boolean(options.skipTransition);
     if (skipTransition) {
-      resetSwipeVisual();
+      if (!options.keepSwipeVisual) {
+        resetSwipeVisual();
+      }
       setCardExit(false);
       renderStudy(entry.study);
-      triggerCardEnter(300);
+      if (options.triggerEnter !== false) {
+        triggerCardEnter(300);
+      }
     } else {
       animateOutThenIn(direction, () => renderStudy(entry.study));
     }
@@ -350,7 +356,9 @@ export default function App() {
 
     setLoading(true);
     loadingRef.current = true;
-    setStatus("Loading next study...");
+    if (!options.suppressLoadingStatus) {
+      setStatus("Loading next study...");
+    }
 
     try {
       const res = await fetch("/api/next");
@@ -525,15 +533,22 @@ export default function App() {
 
   async function archiveSwipeToNextStudy() {
     if (loadingRef.current) return;
-    playArchiveSwipeVisual();
     const saved = await addCurrentStudyToArchive();
     if (!saved) {
       resetSwipeVisual();
       return;
     }
-    await delay(240);
+    showAddedBubble();
+    playArchiveSwipeVisual();
+    await delay(360);
+    await showNextStudy("up", {
+      skipTransition: true,
+      keepSwipeVisual: true,
+      triggerEnter: false,
+      suppressLoadingStatus: true,
+    });
     resetSwipeVisual();
-    await showNextStudy("up", { skipTransition: true });
+    triggerCardEnter(300);
   }
 
   function removeStudyFromHistory(studyId) {
@@ -825,6 +840,7 @@ export default function App() {
 
   return (
     <>
+      <div className={`added-bubble${addedBubbleVisible ? " show" : ""}`}>Added</div>
       <main className="shell">
         <header className="header">
           <div>
