@@ -24,7 +24,7 @@ Default feed is the latest `Transfusion` RSS feed:
 - If the last update check was within the last week, runtime skips the updater check.
 - Study cache is saved in-repo at `data/studies_cache.json` so you can still update offline and push to GitHub manually.
 - Offline updater can fetch at most weekly by default; pass `--force` to fetch immediately.
-- Studies older than 6 months are automatically removed from the deck.
+- Studies are kept for at least 6 months from when they were first pulled.
 
 ## Setup
 
@@ -73,6 +73,26 @@ Notes:
 - Any other value means enabled
 
 After editing `feeds.csv`, run `python3 scripts/update_studies_cache.py` and then click **Reload cache** in the app (or restart app).
+
+## Hostinger Auto-Update (Safe Pulls)
+
+If your server writes to tracked cache files (like `data/studies_cache.json`), `git pull` can fail.
+Use `scripts/auto_update_from_github.sh` for timer-based updates; it safely resets runtime-mutated tracked files before pulling.
+
+One-time setup on server:
+
+```bash
+cd /opt/doomscroller
+chmod +x scripts/auto_update_from_github.sh
+```
+
+If your service/timer already calls this path, restart timer/service:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart doomscroller-autoupdate.timer
+sudo systemctl start doomscroller-autoupdate.service
+```
 
 ## PubMed Sieve Integration
 
