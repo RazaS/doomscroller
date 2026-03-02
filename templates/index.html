@@ -104,6 +104,7 @@
     #signup-btn { background: linear-gradient(130deg, #1d4ed8, #2563eb); }
     #logout-btn { background: linear-gradient(130deg, #6b7280, #4b5563); }
     #archive-btn { background: linear-gradient(130deg, #7c3aed, #6d28d9); }
+    .auth-btn.success-flash { background: linear-gradient(130deg, #047857, #10b981) !important; }
 
     .auth-state {
       font-size: 0.75rem;
@@ -130,6 +131,14 @@
       border: 1px solid rgba(20, 33, 43, 0.07);
       perspective: 1300px;
       position: relative;
+    }
+
+    .card.dragging {
+      transition: none;
+    }
+
+    .card.archive-swipe {
+      animation: archive-swipe 280ms cubic-bezier(0.2, 0.8, 0.2, 1);
     }
 
     .card-inner {
@@ -165,6 +174,12 @@
     @keyframes pop-in {
       0% { transform: translateY(28px); opacity: 0.16; }
       100% { transform: translateY(0); opacity: 1; }
+    }
+
+    @keyframes archive-swipe {
+      0% { transform: translateX(0) rotate(0deg); opacity: 1; }
+      45% { transform: translateX(92px) rotate(4deg); opacity: 0.82; }
+      100% { transform: translateX(0) rotate(0deg); opacity: 1; }
     }
 
     .journal {
@@ -389,6 +404,7 @@
       </div>
       <div class="badge" id="deck-badge">Loading...</div>
     </header>
+    <p class="status" id="status"></p>
 
     <section class="auth-row">
       <input id="username-input" type="text" placeholder="username" autocomplete="username">
@@ -431,8 +447,6 @@
       <button id="copy-btn" class="ctl-btn" type="button">Copy</button>
       <button id="copy-list-btn" class="ctl-btn" type="button">Copy List</button>
     </section>
-
-    <p class="status" id="status"></p>
     <p class="hint"></p>
   </main>
 
@@ -574,7 +588,19 @@
       updateAuthUI();
       await fetchArchive();
       setStatus("Account created and logged in.");
+      flashButtonSuccess(signupBtn, "Signed up ✓");
       logUsage("signup_ui");
+    }
+
+    function flashButtonSuccess(btn, successLabel) {
+      if (!btn) return;
+      const originalLabel = btn.textContent;
+      btn.classList.add("success-flash");
+      btn.textContent = successLabel;
+      setTimeout(() => {
+        btn.classList.remove("success-flash");
+        btn.textContent = originalLabel;
+      }, 1400);
     }
 
     async function login() {
@@ -612,6 +638,7 @@
     }
 
     function animateOutThenIn(direction, updater) {
+      resetSwipeVisual();
       card.classList.remove("flipped");
       card.style.setProperty("--exit-y", direction === "down" ? "48px" : "-48px");
       card.classList.remove("enter");
@@ -621,6 +648,36 @@
         card.classList.remove("exit");
         card.classList.add("enter");
       }, 180);
+    }
+
+    function updateSwipeVisual(startX, currentX, startY, currentY) {
+      const dx = currentX - startX;
+      if (dx <= 0) {
+        resetSwipeVisual();
+        return;
+      }
+      const cappedX = Math.min(dx, 130);
+      const dy = currentY - startY;
+      const offsetY = Math.max(-14, Math.min(14, dy * 0.12));
+      const rotate = Math.max(-6, Math.min(6, cappedX * 0.045));
+
+      card.classList.add("dragging");
+      card.style.transform = `translate3d(${cappedX}px, ${offsetY}px, 0) rotate(${rotate}deg)`;
+      card.style.opacity = String(1 - Math.min(cappedX / 520, 0.18));
+    }
+
+    function resetSwipeVisual() {
+      card.classList.remove("dragging", "archive-swipe");
+      card.style.transform = "";
+      card.style.opacity = "";
+    }
+
+    function playArchiveSwipeVisual() {
+      resetSwipeVisual();
+      card.classList.remove("archive-swipe");
+      void card.offsetWidth;
+      card.classList.add("archive-swipe");
+      setTimeout(() => card.classList.remove("archive-swipe"), 300);
     }
 
     function renderStudy(study) {
@@ -963,11 +1020,13 @@
       // Right swipe saves to personal archive.
       if (dxSigned > 56 && dxAbs > (Math.abs(dy) * 1.2) && Math.abs(dy) < 100) {
         lastSwipeAt = now;
+        playArchiveSwipeVisual();
         addCurrentStudyToArchive();
         return true;
       }
 
       if (Math.abs(dy) < 42 || dxAbs > 120 || Math.abs(dy) < (dxAbs * 1.15)) return;
+      resetSwipeVisual();
       lastSwipeAt = now;
       if (dy > 0) {
         showNextStudy("up");
@@ -998,7 +1057,12 @@
       const dxAbs = Math.abs(dxSigned);
       movedDuringTouch = Math.abs(dy) > 14 || dxAbs > 14;
 
-      if (touchStartedInAbstract) return;
+      if (touchStartedInAbstract) {
+        resetSwipeVisual();
+        return;
+      }
+
+      updateSwipeVisual(touchStartX, touchCurrentX, touchStartY, touchCurrentY);
 
       if ((Math.abs(dy) > 24 && Math.abs(dy) > (dxAbs * 1.2)) || (dxSigned > 24 && dxAbs > (Math.abs(dy) * 1.2))) {
         ev.preventDefault();
@@ -1013,6 +1077,7 @@
       if (touchStartY === null || touchStartX === null) return;
 
       if (touchStartedInAbstract) {
+        resetSwipeVisual();
         touchStartY = null;
         touchStartX = null;
         touchCurrentY = null;
@@ -1026,7 +1091,18 @@
       if (!swipeConsumed) {
         maybeSwipeNavigate(touchStartY, t.clientY, touchStartX, t.clientX);
       }
+      if (!swipeConsumed) resetSwipeVisual();
 
+      touchStartY = null;
+      touchStartX = null;
+      touchCurrentY = null;
+      touchCurrentX = null;
+      touchStartedInAbstract = false;
+      swipeConsumed = false;
+    }, { passive: true });
+
+    card.addEventListener("touchcancel", () => {
+      resetSwipeVisual();
       touchStartY = null;
       touchStartX = null;
       touchCurrentY = null;
