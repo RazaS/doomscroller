@@ -344,7 +344,8 @@ export default function App() {
     updateDeckBadge(latestTotalLoadedRef.current, latestRemainingInDeckRef.current);
 
     if (entry.message) {
-      setStatus(`Loaded with warnings: ${entry.message}`, true);
+      // Keep runtime feed errors concise in UI; details stay in server logs.
+      setStatus("Some feeds failed to refresh. Showing available studies.", true);
     } else {
       setStatus("");
     }
