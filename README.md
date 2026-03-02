@@ -16,7 +16,6 @@ Default feed is the latest `Transfusion` RSS feed:
 - Tap-to-flip card: back side fetches abstract text from PubMed (falls back to feed summary if no match).
 - Randomized study ordering from your configured feeds.
 - Additional PubMed stream via `pubmed-sieve`: pulls studies matching `transfusion`, `transfused`, or `transfusing` in title/abstract (`[tiab]`) from the last 6 months.
-- Additional PubMed author stream via `pubmed-sieve`: also includes recent studies by the configured transfusion author list (`[au]` terms).
 - Feed list managed via `feeds.csv` (no code changes needed to add more journals).
 - RSS/Atom feed items are only kept if title or abstract/summary contains one of: `transfusion`, `transfused`, `transfusing`.
 - Runtime starts from persisted cache (`data/studies_cache.json`) for fast initial load.

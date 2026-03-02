@@ -43,59 +43,6 @@ PUBMED_EFETCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
 DOI_RE = re.compile(r"\b10\.\d{4,9}/[-._;()/:a-z0-9]+\b", re.IGNORECASE)
 TRANSFUSION_TERM_RE = re.compile(r"\b(?:transfusion|transfused|transfusing)\b", re.IGNORECASE)
 PUBMED_SIEVE_QUERY_TERMS = ["transfusion", "transfused", "transfusing"]
-PUBMED_SIEVE_AUTHOR_TERMS = [
-    "Alter HJ [au]",
-    "Busch MP [au]",
-    "Carson JL [au]",
-    "Stanworth SJ [au]",
-    "Callum J [au]",
-    "D'Alessandro A [au]",
-    "Westhoff CM [au]",
-    "Hebert PC [au]",
-    "Arnold DM [au]",
-    "McQuilten Z [au]",
-    "June CH [au]",
-    "Devine D [au]",
-    "Flegel WA [au]",
-    "Peyrard T [au]",
-    "Roberts I [au]",
-    "Spitalnik SL [au]",
-    "Custer B [au]",
-    "Josephson CD [au]",
-    "Ghevaert C [au]",
-    "Toye AJ [au]",
-    "Eto K [au]",
-    "Bloch EM [au]",
-    "Fijnvandraat K [au]",
-    "Storry J [au]",
-    "van der Schoot E [au]",
-    "Burnouf T [au]",
-    "Heddle N [au]",
-    "Fergusson D [au]",
-    "Stramer SL [au]",
-    "Dodd RY [au]",
-    "Katz LM [au]",
-    "Erikstrup C [au]",
-    "de Castilho LM [au]",
-    "Lozano M [au]",
-    "So-Osman C [au]",
-    "Schubert P [au]",
-    "Al-Riyami AZ [au]",
-    "Zeller M [au]",
-    "Tinmouth A [au]",
-    "Denomme G [au]",
-    "Nance SJ [au]",
-    "Epstein JS [au]",
-    "O'Brien SF [au]",
-    "Drews SJ [au]",
-    "Siegel DL [au]",
-    "Engleman E [au]",
-    "Williams DA [au]",
-    "Rebulla P [au]",
-    "Rock G [au]",
-    "Choudhury N [au]",
-    "Edgren G [au]",
-]
 PUBMED_SIEVE_DATE_FILTER = "\"last 6 months\"[dp]"
 PUBMED_SIEVE_MAX_ITEMS = 150
 DATA_DIR = APP_ROOT / "data"
@@ -509,21 +456,14 @@ class StudyDeck:
             journals=[],
             require_hasabstract=False,
         )
-        queries: List[str] = []
-        if keyword_base_query:
-            queries.append(f"({keyword_base_query}) AND ({PUBMED_SIEVE_DATE_FILTER})")
-        if PUBMED_SIEVE_AUTHOR_TERMS:
-            author_query = " OR ".join(f"({term})" for term in PUBMED_SIEVE_AUTHOR_TERMS)
-            queries.append(f"({author_query}) AND ({PUBMED_SIEVE_DATE_FILTER})")
-        if not queries:
+        if not keyword_base_query:
             return []
+        query = f"({keyword_base_query}) AND ({PUBMED_SIEVE_DATE_FILTER})"
 
         records: List[Dict] = []
         seen_pmids = set()
-        for query in queries:
-            df = sieve_helpers.pubmed_articles_for_query(query)
-            if df is None or len(df) == 0:
-                continue
+        df = sieve_helpers.pubmed_articles_for_query(query)
+        if df is not None and len(df) > 0:
             if len(df) > PUBMED_SIEVE_MAX_ITEMS:
                 df = df.head(PUBMED_SIEVE_MAX_ITEMS)
             for row in df.to_dict(orient="records"):
@@ -551,7 +491,7 @@ class StudyDeck:
                     summary=abstract or "No abstract available from PubMed.",
                     published_dt=published_dt,
                     journal_name=journal,
-                    feed_url=f"pubmed-sieve:{'|'.join(PUBMED_SIEVE_QUERY_TERMS)}+authors",
+                    feed_url=f"pubmed-sieve:{'|'.join(PUBMED_SIEVE_QUERY_TERMS)}",
                     stable_key=f"pubmed-sieve:{pmid or title}",
                 )
             )
