@@ -1,14 +1,43 @@
 :root {
   --bg-1: #f5f2e9;
   --bg-2: #d8e7ef;
+  --bg-accent-1: rgba(194, 65, 12, 0.12);
+  --bg-accent-2: rgba(15, 118, 110, 0.14);
   --ink: #14212b;
   --muted: #5b6d79;
   --accent: #0f766e;
   --accent-2: #c2410c;
   --card: #fffef9;
   --shadow: 0 16px 44px rgba(20, 33, 43, 0.18);
+  --soft-border: rgba(20, 33, 43, 0.07);
+  --input-bg: rgba(255, 255, 255, 0.92);
+  --badge-bg: rgba(20, 33, 43, 0.09);
+  --archive-overlay: rgba(20, 33, 43, 0.45);
+  --archive-card-bg: #fffef9;
+  --archive-item-bg: #fff;
+  --link-color: #1d4ed8;
   --radius: 26px;
   --viewport-pad: 10px;
+}
+
+[data-theme="dark"] {
+  --bg-1: #0b1720;
+  --bg-2: #122634;
+  --bg-accent-1: rgba(249, 115, 22, 0.12);
+  --bg-accent-2: rgba(20, 184, 166, 0.14);
+  --ink: #e7eef5;
+  --muted: #9db0bf;
+  --accent: #2dd4bf;
+  --accent-2: #fb923c;
+  --card: #0f1d28;
+  --shadow: 0 16px 44px rgba(0, 0, 0, 0.5);
+  --soft-border: rgba(231, 238, 245, 0.14);
+  --input-bg: rgba(15, 29, 40, 0.9);
+  --badge-bg: rgba(231, 238, 245, 0.15);
+  --archive-overlay: rgba(2, 8, 12, 0.62);
+  --archive-card-bg: #0f1d28;
+  --archive-item-bg: #112231;
+  --link-color: #93c5fd;
 }
 
 * {
@@ -27,8 +56,8 @@ body {
   min-height: 100dvh;
   color: var(--ink);
   background:
-    radial-gradient(circle at 15% 15%, rgba(194, 65, 12, 0.12) 0%, rgba(194, 65, 12, 0) 30%),
-    radial-gradient(circle at 85% 10%, rgba(15, 118, 110, 0.14) 0%, rgba(15, 118, 110, 0) 36%),
+    radial-gradient(circle at 15% 15%, var(--bg-accent-1) 0%, rgba(194, 65, 12, 0) 30%),
+    radial-gradient(circle at 85% 10%, var(--bg-accent-2) 0%, rgba(15, 118, 110, 0) 36%),
     linear-gradient(140deg, var(--bg-1), var(--bg-2));
   font-family: "Avenir Next", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
   display: grid;
@@ -62,6 +91,12 @@ body {
   padding: 0 2px;
 }
 
+.header-right {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+}
+
 .title {
   margin: 0;
   font-size: clamp(1.05rem, 2.6vw, 1.35rem);
@@ -80,9 +115,25 @@ body {
   font-weight: 700;
   border-radius: 999px;
   padding: 5px 9px;
-  background: rgba(20, 33, 43, 0.09);
+  background: var(--badge-bg);
   color: var(--ink);
   white-space: nowrap;
+}
+
+.theme-toggle {
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--soft-border);
+  border-radius: 999px;
+  background: var(--input-bg);
+  color: var(--ink);
+  font-size: 0.7rem;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
 }
 
 .auth-row {
@@ -94,11 +145,12 @@ body {
 
 .auth-row input {
   min-height: 34px;
-  border: 1px solid rgba(20, 33, 43, 0.2);
+  border: 1px solid var(--soft-border);
   border-radius: 10px;
   padding: 6px 8px;
   font-size: 0.8rem;
-  background: rgba(255, 255, 255, 0.92);
+  background: var(--input-bg);
+  color: var(--ink);
 }
 
 .auth-btn {
@@ -157,7 +209,7 @@ body {
   transition: transform 340ms cubic-bezier(0.2, 0.82, 0.2, 1), opacity 340ms ease;
   user-select: none;
   touch-action: manipulation;
-  border: 1px solid rgba(20, 33, 43, 0.07);
+  border: 1px solid var(--soft-border);
   perspective: 1300px;
   position: relative;
   will-change: transform, opacity;
@@ -266,7 +318,7 @@ body {
   margin: 0;
   overflow: auto;
   line-height: 1.42;
-  color: #1f313f;
+  color: var(--ink);
   padding-right: 4px;
   overscroll-behavior: contain;
   scrollbar-width: thin;
@@ -404,7 +456,7 @@ body {
   display: none;
   align-items: center;
   justify-content: center;
-  background: rgba(20, 33, 43, 0.45);
+  background: var(--archive-overlay);
   z-index: 20;
   padding: 14px;
 }
@@ -416,9 +468,9 @@ body {
 .archive-card {
   width: min(760px, 96vw);
   max-height: 82vh;
-  background: #fffef9;
+  background: var(--archive-card-bg);
   border-radius: 14px;
-  border: 1px solid rgba(20, 33, 43, 0.08);
+  border: 1px solid var(--soft-border);
   box-shadow: var(--shadow);
   display: grid;
   grid-template-rows: auto 1fr;
@@ -430,7 +482,7 @@ body {
   justify-content: space-between;
   align-items: center;
   padding: 10px 12px;
-  border-bottom: 1px solid rgba(20, 33, 43, 0.09);
+  border-bottom: 1px solid var(--soft-border);
   font-size: 0.86rem;
   font-weight: 700;
 }
@@ -454,10 +506,10 @@ body {
 }
 
 .archive-item {
-  border: 1px solid rgba(20, 33, 43, 0.09);
+  border: 1px solid var(--soft-border);
   border-radius: 10px;
   padding: 8px;
-  background: #fff;
+  background: var(--archive-item-bg);
 }
 
 .archive-item h4 {
@@ -473,7 +525,7 @@ body {
 }
 
 .archive-item a {
-  color: #1d4ed8;
+  color: var(--link-color);
 }
 
 @media (max-width: 760px) {

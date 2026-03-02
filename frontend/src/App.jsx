@@ -1,5 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
+const THEME_STORAGE_KEY = "tmscroll-theme";
+
+function getInitialTheme() {
+  if (typeof window === "undefined") return "light";
+  const storedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
+  if (storedTheme === "light" || storedTheme === "dark") {
+    return storedTheme;
+  }
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
 function setTimeoutTracked(ref, fn, delay) {
   if (ref.current) {
     clearTimeout(ref.current);
@@ -11,6 +22,7 @@ function setTimeoutTracked(ref, fn, delay) {
 }
 
 export default function App() {
+  const [theme, setTheme] = useState(getInitialTheme);
   const [usernameInput, setUsernameInput] = useState("");
   const [passwordInput, setPasswordInput] = useState("");
   const [currentUsername, setCurrentUsername] = useState("");
@@ -79,6 +91,11 @@ export default function App() {
   useEffect(() => {
     cardStyleRef.current = cardStyle;
   }, [cardStyle]);
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+  }, [theme]);
 
   useEffect(() => {
     return () => {
@@ -822,6 +839,7 @@ export default function App() {
 
   const authStateText = currentUsername ? `Logged in as ${currentUsername}` : "Not logged in";
   const archiveButtonText = `Archive (${archiveEntries.length})`;
+  const darkModeEnabled = theme === "dark";
 
   const signupButtonClass = useMemo(
     () => `auth-btn${signupSuccessFlash ? " success-flash" : ""}`,
@@ -867,7 +885,21 @@ export default function App() {
             <h1 className="title">TMScroll Studies</h1>
             <p className="subtitle">Doom scroll the latest in transfusion science</p>
           </div>
-          <div className="badge" id="deck-badge">{badgeText}</div>
+          <div className="header-right">
+            <button
+              className="theme-toggle"
+              type="button"
+              aria-label={darkModeEnabled ? "Switch to light mode" : "Switch to dark mode"}
+              title={darkModeEnabled ? "Light mode" : "Dark mode"}
+              onClick={() => {
+                setTheme((prev) => (prev === "dark" ? "light" : "dark"));
+                logUsage("theme_toggle_ui", { to_theme: darkModeEnabled ? "light" : "dark" });
+              }}
+            >
+              {darkModeEnabled ? "☀" : "☾"}
+            </button>
+            <div className="badge" id="deck-badge">{badgeText}</div>
+          </div>
         </header>
 
         <p className="status" style={{ color: statusError ? "#b91c1c" : undefined }}>
