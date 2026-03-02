@@ -17,6 +17,7 @@ Default feed is the latest `Transfusion` RSS feed:
 - Randomized study ordering from your configured feeds.
 - Additional PubMed stream via `pubmed-sieve`: pulls studies matching `transfusion` in title/abstract (`[tiab]`) from the last 6 months.
 - Feed list managed via `feeds.csv` (no code changes needed to add more journals).
+- RSS/Atom feed items are only kept if title or abstract/summary contains one of: `transfusion`, `transfused`, `transfusing`.
 - Runtime starts from persisted cache (`data/studies_cache.json`) for fast initial load.
 - Runtime performs at most one external update check per week; if new studies are found from the last 7 days, they are appended to the end of the in-memory deck.
 - If the last update check was within the last week, runtime skips the updater check.

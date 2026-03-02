@@ -41,6 +41,7 @@ MAX_ABSTRACT_LEN = 4000
 PUBMED_ESEARCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
 PUBMED_EFETCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
 DOI_RE = re.compile(r"\b10\.\d{4,9}/[-._;()/:a-z0-9]+\b", re.IGNORECASE)
+TRANSFUSION_TERM_RE = re.compile(r"\b(?:transfusion|transfused|transfusing)\b", re.IGNORECASE)
 PUBMED_SIEVE_QUERY_TERM = "transfusion"
 PUBMED_SIEVE_DATE_FILTER = "\"last 6 months\"[dp]"
 PUBMED_SIEVE_MAX_ITEMS = 150
@@ -98,6 +99,14 @@ def clean_html(raw: str) -> str:
     if len(compact) <= MAX_SUMMARY_LEN:
         return compact
     return compact[:MAX_SUMMARY_LEN].rstrip() + "..."
+
+
+def matches_transfusion_terms(title: str, abstract_or_summary: str) -> bool:
+    cleaned = clean_html(abstract_or_summary)
+    blob = f"{title or ''} {cleaned or ''}".strip()
+    if not blob:
+        return False
+    return bool(TRANSFUSION_TERM_RE.search(blob))
 
 
 class StudyDeck:
@@ -178,6 +187,8 @@ class StudyDeck:
                 summary_raw = get_child_text(item, ["description", "summary", "content", "encoded"])
                 guid = get_child_text(item, ["guid"])
                 published_dt = parse_pub_date(published_raw)
+                if not matches_transfusion_terms(title, summary_raw):
+                    continue
 
                 parsed_items.append(
                     self._build_study(
@@ -214,6 +225,8 @@ class StudyDeck:
                 summary_raw = get_child_text(entry, ["summary", "content"])
                 entry_id = get_child_text(entry, ["id"])
                 published_dt = parse_pub_date(published_raw)
+                if not matches_transfusion_terms(title, summary_raw):
+                    continue
 
                 parsed_items.append(
                     self._build_study(
