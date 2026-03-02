@@ -62,6 +62,7 @@ export default function App() {
   const movedDuringTouchRef = useRef(false);
   const swipeConsumedRef = useRef(false);
   const touchStartedInAbstractRef = useRef(false);
+  const lastWheelAtRef = useRef(0);
 
   useEffect(() => {
     currentStudyRef.current = currentStudy;
@@ -136,6 +137,10 @@ export default function App() {
     ta.select();
     document.execCommand("copy");
     document.body.removeChild(ta);
+  }
+
+  function delay(ms) {
+    return new Promise((resolve) => window.setTimeout(resolve, ms));
   }
 
   function resetSwipeVisual() {
@@ -214,13 +219,25 @@ export default function App() {
     swipeResetTimerRef.current = window.setTimeout(() => {
       swipeResetTimerRef.current = null;
       setCardStyle({ transform: "", opacity: "", transition: "" });
-    }, 300);
+    }, 340);
+  }
+
+  function triggerCardEnter(ms = 340) {
+    if (enterTimerRef.current) {
+      clearTimeout(enterTimerRef.current);
+      enterTimerRef.current = null;
+    }
+    setCardEnter(true);
+    enterTimerRef.current = window.setTimeout(() => {
+      enterTimerRef.current = null;
+      setCardEnter(false);
+    }, ms);
   }
 
   function animateOutThenIn(direction, updater) {
     resetSwipeVisual();
     setCardFlipped(false);
-    setCardExitY(direction === "down" ? "48px" : "-48px");
+    setCardExitY(direction === "down" ? "54px" : "-54px");
     setCardEnter(false);
     setCardExit(true);
 
@@ -237,12 +254,8 @@ export default function App() {
       exitTimerRef.current = null;
       updater();
       setCardExit(false);
-      setCardEnter(true);
-      enterTimerRef.current = window.setTimeout(() => {
-        enterTimerRef.current = null;
-        setCardEnter(false);
-      }, 250);
-    }, 180);
+      triggerCardEnter(340);
+    }, 240);
   }
 
   async function loadAbstractForStudy(studyId, fallbackSummary) {
@@ -288,8 +301,16 @@ export default function App() {
     void loadAbstractForStudy(study.id || "", study.summary || "No abstract available.");
   }
 
-  function renderHistoryEntry(entry, direction) {
-    animateOutThenIn(direction, () => renderStudy(entry.study));
+  function renderHistoryEntry(entry, direction, options = {}) {
+    const skipTransition = Boolean(options.skipTransition);
+    if (skipTransition) {
+      resetSwipeVisual();
+      setCardExit(false);
+      renderStudy(entry.study);
+      triggerCardEnter(300);
+    } else {
+      animateOutThenIn(direction, () => renderStudy(entry.study));
+    }
 
     if (Number.isFinite(entry.total_loaded) && Number.isFinite(entry.remaining_in_deck)) {
       latestTotalLoadedRef.current = entry.total_loaded;
@@ -304,7 +325,7 @@ export default function App() {
     }
   }
 
-  function showPreviousStudy(direction = "up") {
+  function showPreviousStudy(direction = "up", options = {}) {
     if (loadingRef.current) return;
 
     if (historyIndexRef.current <= 0) {
@@ -313,16 +334,16 @@ export default function App() {
     }
 
     historyIndexRef.current -= 1;
-    renderHistoryEntry(historyRef.current[historyIndexRef.current], direction);
+    renderHistoryEntry(historyRef.current[historyIndexRef.current], direction, options);
     logUsage("previous_study", { index: historyIndexRef.current });
   }
 
-  async function showNextStudy(direction = "down") {
+  async function showNextStudy(direction = "down", options = {}) {
     if (loadingRef.current) return;
 
     if (historyIndexRef.current < historyRef.current.length - 1) {
       historyIndexRef.current += 1;
-      renderHistoryEntry(historyRef.current[historyIndexRef.current], direction);
+      renderHistoryEntry(historyRef.current[historyIndexRef.current], direction, options);
       logUsage("next_study_history", { index: historyIndexRef.current });
       return;
     }
@@ -352,7 +373,7 @@ export default function App() {
 
       historyRef.current.push(entry);
       historyIndexRef.current = historyRef.current.length - 1;
-      renderHistoryEntry(entry, direction);
+      renderHistoryEntry(entry, direction, options);
       logUsage("next_study_fetched", { study_id: entry.study.id || "" });
     } catch (err) {
       setStatus(`Failed to load study: ${err.message}`, true);
@@ -467,13 +488,13 @@ export default function App() {
   async function addCurrentStudyToArchive() {
     if (!currentUsername) {
       setStatus("Login required to save to personal archive.", true);
-      return;
+      return false;
     }
 
     const study = currentStudyRef.current;
     if (!study || !study.id) {
       setStatus("No study loaded yet.", true);
-      return;
+      return false;
     }
 
     const payload = {
@@ -493,12 +514,26 @@ export default function App() {
 
     if (!data.ok) {
       setStatus(data.message || "Could not save to archive.", true);
-      return;
+      return false;
     }
 
     await fetchArchive(currentUsername);
     setStatus("Saved to your personal archive.");
     logUsage("archive_save_ui", { study_id: study.id });
+    return true;
+  }
+
+  async function archiveSwipeToNextStudy() {
+    if (loadingRef.current) return;
+    playArchiveSwipeVisual();
+    const saved = await addCurrentStudyToArchive();
+    if (!saved) {
+      resetSwipeVisual();
+      return;
+    }
+    await delay(240);
+    resetSwipeVisual();
+    await showNextStudy("up", { skipTransition: true });
   }
 
   function removeStudyFromHistory(studyId) {
@@ -620,8 +655,7 @@ export default function App() {
     // Right swipe saves to personal archive.
     if (dxSigned > 56 && dxAbs > Math.abs(dy) * 1.2 && Math.abs(dy) < 100) {
       lastSwipeAtRef.current = now;
-      playArchiveSwipeVisual();
-      void addCurrentStudyToArchive();
+      void archiveSwipeToNextStudy();
       return true;
     }
 
@@ -736,6 +770,10 @@ export default function App() {
   function onCardWheel(ev) {
     if (Math.abs(ev.deltaY) < 28) return;
     if (cardFlipped && ev.target.closest("#study-abstract")) return;
+    const now = Date.now();
+    if (now - lastWheelAtRef.current < 220) return;
+    lastWheelAtRef.current = now;
+    ev.preventDefault();
 
     if (ev.deltaY < 0) {
       showPreviousStudy("up");
