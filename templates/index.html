@@ -212,15 +212,43 @@
       align-items: center;
       justify-content: center;
       border-radius: 12px;
-      min-height: 36px;
+      min-height: 34px;
       text-decoration: none;
       font-weight: 700;
       letter-spacing: 0.01em;
       color: #fff;
       background: linear-gradient(120deg, var(--accent), #1f9087);
       box-shadow: 0 8px 18px rgba(15, 118, 110, 0.25);
-      padding: 8px 10px;
-      font-size: 0.8rem;
+      padding: 7px 8px;
+      font-size: 0.74rem;
+      width: 100%;
+    }
+
+    .study-actions {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 8px;
+      align-items: center;
+    }
+
+    .study-flag-btn {
+      border: 0;
+      border-radius: 12px;
+      min-height: 34px;
+      font-size: 0.74rem;
+      font-weight: 700;
+      color: #fff;
+      cursor: pointer;
+      padding: 7px 8px;
+      white-space: nowrap;
+      background: linear-gradient(130deg, #991b1b, #dc2626);
+      box-shadow: 0 8px 18px rgba(185, 28, 28, 0.24);
+    }
+
+    .study-flag-btn:disabled {
+      opacity: 0.58;
+      cursor: not-allowed;
+      box-shadow: none;
     }
 
     .flip-hint {
@@ -381,7 +409,10 @@
             <p class="meta" id="study-meta">Please wait.</p>
             <p class="flip-hint">Swipe up: next | Swipe down: previous | Swipe right: save to archive | Tap: flip</p>
             <p class="summary" id="study-front-summary">Tap to flip for abstract.</p>
-            <a id="study-link" class="study-link" href="#" target="_blank" rel="noopener noreferrer">Open study</a>
+            <div class="study-actions">
+              <a id="study-link" class="study-link" href="#" target="_blank" rel="noopener noreferrer">Open study</a>
+              <button id="not-transfusion-btn" class="study-flag-btn" type="button">Not transfusion</button>
+            </div>
           </section>
           <section class="face back">
             <div class="journal">Abstract</div>
@@ -425,6 +456,7 @@
     const frontSummaryEl = document.getElementById("study-front-summary");
     const abstractEl = document.getElementById("study-abstract");
     const linkEl = document.getElementById("study-link");
+    const notTransfusionBtn = document.getElementById("not-transfusion-btn");
     const statusEl = document.getElementById("status");
     const badgeEl = document.getElementById("deck-badge");
 
@@ -479,6 +511,19 @@
         authStateEl.textContent = `Logged in as ${currentUsername}`;
       } else {
         authStateEl.textContent = "Not logged in";
+      }
+      updateStudyActionState();
+    }
+
+    function updateStudyActionState() {
+      const hasStudy = Boolean(currentStudyId);
+      notTransfusionBtn.disabled = !hasStudy;
+      if (!hasStudy) {
+        notTransfusionBtn.title = "Load a study first.";
+      } else if (!currentUsername) {
+        notTransfusionBtn.title = "Login required to vote.";
+      } else {
+        notTransfusionBtn.title = "Report this study as not transfusion-related.";
       }
     }
 
@@ -602,6 +647,7 @@
         linkEl.style.opacity = "0.65";
         linkEl.style.pointerEvents = "none";
       }
+      updateStudyActionState();
     }
 
     async function loadAbstractForStudy(studyId, fallbackSummary) {
@@ -690,6 +736,9 @@
         const data = await res.json();
 
         if (!data.ok || !data.study) {
+          currentStudy = null;
+          currentStudyId = "";
+          updateStudyActionState();
           updateDeckBadge(0, 0);
           setStatus(data.message || "No cached studies available.", true);
           return;
@@ -786,6 +835,56 @@
       await fetchArchive();
       setStatus("Saved to your personal archive.");
       logUsage("archive_save_ui", { study_id: currentStudyId });
+    }
+
+    function removeStudyFromHistory(studyId) {
+      if (!studyId || !studyHistory.length) return;
+      const currentHistoryStudyId = historyIndex >= 0 ? (studyHistory[historyIndex]?.study?.id || "") : "";
+      const filtered = studyHistory.filter((entry) => (entry?.study?.id || "") !== studyId);
+      if (filtered.length === studyHistory.length) return;
+      studyHistory.length = 0;
+      filtered.forEach((entry) => studyHistory.push(entry));
+      historyIndex = filtered.findIndex((entry) => (entry?.study?.id || "") === currentHistoryStudyId);
+    }
+
+    async function markCurrentStudyNotTransfusion() {
+      if (!currentStudy || !currentStudyId) {
+        setStatus("No study loaded yet.", true);
+        return;
+      }
+      if (!currentUsername) {
+        setStatus("Login required to vote 'Not transfusion'.", true);
+        return;
+      }
+
+      const thisStudyId = currentStudyId;
+      const { res, data } = await apiJson("/api/study/not-transfusion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ study_id: thisStudyId }),
+      });
+
+      if (!res.ok || !data.ok) {
+        setStatus(data.message || "Could not submit vote.", true);
+        return;
+      }
+
+      setStatus(data.message || "Vote recorded.");
+      logUsage("not_transfusion_vote_ui", {
+        study_id: thisStudyId,
+        votes: Number(data.votes || 0),
+        excluded: Boolean(data.excluded),
+      });
+
+      if (data.excluded) {
+        removeStudyFromHistory(thisStudyId);
+        if (currentStudyId === thisStudyId) {
+          currentStudy = null;
+          currentStudyId = "";
+          updateStudyActionState();
+          await showNextStudy("up");
+        }
+      }
     }
 
     function renderArchivePanel() {
@@ -937,7 +1036,7 @@
     }, { passive: true });
 
     card.addEventListener("click", (ev) => {
-      if (ev.target.closest("#study-link")) return;
+      if (ev.target.closest("#study-link") || ev.target.closest("#not-transfusion-btn")) return;
       if (movedDuringTouch) return;
       card.classList.toggle("flipped");
     });
@@ -967,8 +1066,10 @@
     nextBtn.addEventListener("click", () => showNextStudy("down"));
     copyBtn.addEventListener("click", copyCurrentStudyInformation);
     copyListBtn.addEventListener("click", copyArchiveListInformation);
+    notTransfusionBtn.addEventListener("click", markCurrentStudyNotTransfusion);
 
     updateArchiveButton();
+    updateStudyActionState();
     syncAuthState();
     showNextStudy("down");
     logUsage("app_open");

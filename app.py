@@ -36,6 +36,7 @@ REFRESH_SECONDS = 15 * 60
 FETCH_INTERVAL_SECONDS = 7 * 24 * 60 * 60
 RUNTIME_APPEND_WINDOW_SECONDS = 7 * 24 * 60 * 60
 MAX_STUDY_AGE_DAYS = 183
+NOT_TRANSFUSION_VOTE_THRESHOLD = 2
 MAX_SUMMARY_LEN = 900
 MAX_ABSTRACT_LEN = 4000
 PUBMED_ESEARCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
@@ -348,6 +349,7 @@ class StudyDeck:
                 if isinstance(item, dict)
             ]
             self.items = self._prune_old_studies(normalized_items)
+            self._apply_exclusions_locked()
             self.last_refresh_ts = time.time()
             self._rebuild_deck_locked()
         except Exception:
@@ -369,6 +371,27 @@ class StudyDeck:
             os.replace(temp_path, STUDIES_CACHE_PATH)
         except Exception:
             pass
+
+    def _filter_excluded_studies_locked(self, excluded_ids: set[str]) -> None:
+        if not excluded_ids:
+            return
+        self.items = [item for item in self.items if item.get("id") not in excluded_ids]
+        self.deck = [item for item in self.deck if item.get("id") not in excluded_ids]
+        self.pubmed_cache = {k: v for k, v in self.pubmed_cache.items() if k not in excluded_ids}
+
+    def _apply_exclusions_locked(self) -> None:
+        self._filter_excluded_studies_locked(get_excluded_study_ids())
+
+    def exclude_study_id(self, study_id: str) -> None:
+        if not study_id:
+            return
+        with self.lock:
+            before_items = len(self.items)
+            before_deck = len(self.deck)
+            self._filter_excluded_studies_locked({study_id})
+            if len(self.items) != before_items or len(self.deck) != before_deck:
+                self.last_refresh_ts = time.time()
+                self._save_cache_to_disk()
 
     def _fetch_due(self) -> bool:
         if self.last_fetch_ts <= 0:
@@ -406,7 +429,11 @@ class StudyDeck:
             key = self._study_dedupe_key(item)
             if key and key not in deduped:
                 deduped[key] = item
-        return list(deduped.values()), errors
+        deduped_items = list(deduped.values())
+        excluded_ids = get_excluded_study_ids()
+        if excluded_ids:
+            deduped_items = [item for item in deduped_items if item.get("id") not in excluded_ids]
+        return deduped_items, errors
 
     def _append_runtime_new_items_locked(self) -> None:
         all_items, errors = self._fetch_external_items()
@@ -432,6 +459,7 @@ class StudyDeck:
             # Append to queue tail so current browsing order is preserved.
             self.deck.extend(new_items)
 
+        self._apply_exclusions_locked()
         valid_ids = {item["id"] for item in self.items}
         self.deck = [item for item in self.deck if item.get("id") in valid_ids]
         self.pubmed_cache = {k: v for k, v in self.pubmed_cache.items() if k in valid_ids}
@@ -516,6 +544,7 @@ class StudyDeck:
         # Runtime mode: never hit external sources. Serve from cached file only.
         if not allow_external_fetch:
             self.items = self._prune_old_studies(self.items)
+            self._apply_exclusions_locked()
             valid_ids = {item["id"] for item in self.items}
             self.deck = [item for item in self.deck if item.get("id") in valid_ids]
             if not self.deck and self.items:
@@ -531,6 +560,7 @@ class StudyDeck:
         # Offline update mode: fetch at most weekly unless explicitly forced.
         if not force_external_fetch and not self._fetch_due() and self.items:
             self.items = self._prune_old_studies(self.items)
+            self._apply_exclusions_locked()
             self._rebuild_deck_locked()
             self.last_refresh_ts = time.time()
             return
@@ -546,6 +576,7 @@ class StudyDeck:
             reverse=True,
         )
         self.items = self._prune_old_studies(fresh_items)
+        self._apply_exclusions_locked()
         valid_ids = {item["id"] for item in self.items}
         self.pubmed_cache = {k: v for k, v in self.pubmed_cache.items() if k in valid_ids}
         self._rebuild_deck_locked()
@@ -577,6 +608,7 @@ class StudyDeck:
     def get_next(self) -> Dict:
         self.maybe_refresh()
         with self.lock:
+            self._apply_exclusions_locked()
             if not self.deck and self.items:
                 self._rebuild_deck_locked()
 
@@ -615,6 +647,7 @@ class StudyDeck:
     def get_study_by_id(self, study_id: str) -> Optional[Dict]:
         self.maybe_refresh()
         with self.lock:
+            self._apply_exclusions_locked()
             return next((item for item in self.items if item.get("id") == study_id), None)
 
     def _last_refresh_iso(self) -> str:
@@ -625,6 +658,7 @@ class StudyDeck:
     def get_abstract(self, study_id: str) -> Dict:
         self.maybe_refresh()
         with self.lock:
+            self._apply_exclusions_locked()
             study = next((item for item in self.items if item["id"] == study_id), None)
             if study is None:
                 return {"ok": False, "message": "Study not found.", "study_id": study_id}
@@ -794,6 +828,24 @@ def init_db() -> None:
                 created_at TEXT NOT NULL,
                 FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL
             );
+
+            CREATE TABLE IF NOT EXISTS study_exclusions (
+                study_id TEXT PRIMARY KEY,
+                reason TEXT NOT NULL,
+                excluded_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS study_exclusion_votes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                study_id TEXT NOT NULL,
+                user_id INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                UNIQUE(study_id, user_id),
+                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_study_exclusion_votes_study_id
+            ON study_exclusion_votes (study_id);
             """
         )
 
@@ -826,6 +878,71 @@ def require_user() -> Optional[Dict]:
     if user_id is None:
         return {"ok": False, "message": "Login required."}
     return None
+
+
+def get_excluded_study_ids() -> set[str]:
+    try:
+        with get_db() as conn:
+            rows = conn.execute("SELECT study_id FROM study_exclusions").fetchall()
+        return {str(r["study_id"] or "").strip() for r in rows if str(r["study_id"] or "").strip()}
+    except Exception:
+        # If table does not exist yet or DB is unavailable, treat as no exclusions.
+        return set()
+
+
+def register_not_transfusion_vote(study_id: str, user_id: int) -> Dict:
+    with get_db() as conn:
+        existing_exclusion = conn.execute(
+            "SELECT 1 FROM study_exclusions WHERE study_id = ?",
+            (study_id,),
+        ).fetchone()
+        already_voted = (
+            conn.execute(
+                "SELECT 1 FROM study_exclusion_votes WHERE study_id = ? AND user_id = ?",
+                (study_id, user_id),
+            ).fetchone()
+            is not None
+        )
+
+        if existing_exclusion is None and not already_voted:
+            conn.execute(
+                """
+                INSERT INTO study_exclusion_votes (study_id, user_id, created_at)
+                VALUES (?, ?, ?)
+                """,
+                (study_id, user_id, now_iso_utc()),
+            )
+
+        votes = int(
+            conn.execute(
+                "SELECT COUNT(*) AS c FROM study_exclusion_votes WHERE study_id = ?",
+                (study_id,),
+            ).fetchone()["c"]
+        )
+
+        excluded_now = False
+        excluded = existing_exclusion is not None
+        if votes >= NOT_TRANSFUSION_VOTE_THRESHOLD and not excluded:
+            conn.execute(
+                """
+                INSERT INTO study_exclusions (study_id, reason, excluded_at)
+                VALUES (?, ?, ?)
+                """,
+                (study_id, "not_transfusion", now_iso_utc()),
+            )
+            excluded = True
+            excluded_now = True
+
+    if excluded:
+        votes = max(votes, NOT_TRANSFUSION_VOTE_THRESHOLD)
+    return {
+        "study_id": study_id,
+        "votes": votes,
+        "threshold": NOT_TRANSFUSION_VOTE_THRESHOLD,
+        "already_voted": already_voted,
+        "excluded": excluded,
+        "excluded_now": excluded_now,
+    }
 
 
 def client_ip() -> str:
@@ -864,8 +981,8 @@ def track_usage_event(event_type: str, meta: Optional[Dict] = None) -> None:
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY") or "dev-secret-change-me"
-deck = StudyDeck(FEEDS_CSV_PATH)
 init_db()
+deck = StudyDeck(FEEDS_CSV_PATH)
 
 
 @app.get("/")
@@ -1042,6 +1159,47 @@ def api_archive_add():
 
     track_usage_event("archive_save", {"study_id": study_id})
     return jsonify({"ok": True, "message": "Saved to your archive."})
+
+
+@app.post("/api/study/not-transfusion")
+def api_study_not_transfusion():
+    unauth = require_user()
+    if unauth:
+        return jsonify(unauth), 401
+
+    payload = request.get_json(silent=True) or {}
+    study_id = str(payload.get("study_id") or "").strip()
+    if not study_id:
+        return jsonify({"ok": False, "message": "study_id is required."}), 400
+
+    user_id = int(current_user_id() or 0)
+    vote = register_not_transfusion_vote(study_id, user_id)
+    if vote["excluded"]:
+        deck.exclude_study_id(study_id)
+
+    if vote["excluded_now"]:
+        message = (
+            f"Removed for everyone ({vote['votes']}/{vote['threshold']} votes). "
+            "It will not appear in future decks."
+        )
+    elif vote["excluded"]:
+        message = "Already removed for everyone."
+    elif vote["already_voted"]:
+        message = f"You already voted ({vote['votes']}/{vote['threshold']})."
+    else:
+        message = f"Vote recorded ({vote['votes']}/{vote['threshold']})."
+
+    track_usage_event(
+        "not_transfusion_vote",
+        {
+            "study_id": study_id,
+            "votes": vote["votes"],
+            "threshold": vote["threshold"],
+            "excluded": vote["excluded"],
+            "already_voted": vote["already_voted"],
+        },
+    )
+    return jsonify({"ok": True, "message": message, **vote})
 
 
 @app.post("/api/usage/event")
