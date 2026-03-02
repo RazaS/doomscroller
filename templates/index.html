@@ -217,7 +217,7 @@
       box-shadow: 0 7px 16px rgba(194, 65, 12, 0.27);
     }
 
-    #refresh-btn {
+    #copy-btn {
       background: linear-gradient(130deg, #334155, #1f2937);
       box-shadow: 0 7px 16px rgba(31, 41, 55, 0.24);
     }
@@ -277,8 +277,8 @@
             <div class="journal">Abstract</div>
             <h2 class="study-title" id="study-back-title">Fetching studies...</h2>
             <p class="meta" id="abstract-meta">Fetching from PubMed...</p>
-            <p class="summary" id="study-abstract">If this is your first run, the app is fetching and parsing your RSS feed list from feeds.csv.</p>
-            <p class="flip-hint">Swipe up/down anytime for next study.</p>
+            <p class="summary" id="study-abstract">Loading abstract...</p>
+            <p class="flip-hint">Swipe up for previous, swipe down for next.</p>
           </section>
         </div>
       </article>
@@ -286,11 +286,11 @@
 
     <section class="controls">
       <button id="next-btn" type="button">Next study</button>
-      <button id="refresh-btn" type="button">Reload cache</button>
+      <button id="copy-btn" type="button">Copy study information</button>
     </section>
 
     <p class="status" id="status"></p>
-    <p class="hint">Swipe up/down on the card for next study, tap to flip</p>
+    <p class="hint">Swipe up for previous, down for next. Tap card to flip.</p>
   </main>
 
   <script>
@@ -306,7 +306,7 @@
     const statusEl = document.getElementById("status");
     const badgeEl = document.getElementById("deck-badge");
     const nextBtn = document.getElementById("next-btn");
-    const refreshBtn = document.getElementById("refresh-btn");
+    const copyBtn = document.getElementById("copy-btn");
 
     let loading = false;
     let touchStartY = null;
@@ -316,8 +316,14 @@
     let lastSwipeAt = 0;
     let movedDuringTouch = false;
     let swipeConsumed = false;
+    let touchStartedInAbstract = false;
     let currentStudyId = "";
+    let currentStudy = null;
     let abstractRequestToken = 0;
+    let historyIndex = -1;
+    const studyHistory = [];
+    let latestTotalLoaded = 0;
+    let latestRemainingInDeck = 0;
 
     function setStatus(text, isError = false) {
       statusEl.textContent = text || "";
@@ -338,6 +344,7 @@
 
     function renderStudy(study) {
       card.classList.remove("flipped");
+      currentStudy = study;
       currentStudyId = study.id || "";
       journalEl.textContent = study.journal || "Unknown journal";
       titleEl.textContent = study.title || "Untitled study";
@@ -404,8 +411,39 @@
       badgeEl.textContent = `${remaining} left / ${total} loaded`;
     }
 
-    async function fetchNextStudy(direction = "up") {
+    function renderHistoryEntry(entry, direction) {
+      animateOutThenIn(direction, () => renderStudy(entry.study));
+      if (Number.isFinite(entry.total_loaded) && Number.isFinite(entry.remaining_in_deck)) {
+        latestTotalLoaded = entry.total_loaded;
+        latestRemainingInDeck = entry.remaining_in_deck;
+      }
+      updateDeckBadge(latestTotalLoaded, latestRemainingInDeck);
+      if (entry.message) {
+        setStatus(`Loaded with warnings: ${entry.message}`, true);
+      } else {
+        setStatus("");
+      }
+    }
+
+    function showPreviousStudy(direction = "up") {
       if (loading) return;
+      if (historyIndex <= 0) {
+        setStatus("No previous study in this session.");
+        return;
+      }
+      historyIndex -= 1;
+      renderHistoryEntry(studyHistory[historyIndex], direction);
+    }
+
+    async function showNextStudy(direction = "down") {
+      if (loading) return;
+
+      if (historyIndex < studyHistory.length - 1) {
+        historyIndex += 1;
+        renderHistoryEntry(studyHistory[historyIndex], direction);
+        return;
+      }
+
       loading = true;
       setStatus("Loading next study...");
 
@@ -417,18 +455,18 @@
         if (!data.ok || !data.study) {
           updateDeckBadge(0, 0);
           setStatus(data.message || "No cached studies available. Run the offline updater script.", true);
-          loading = false;
           return;
         }
 
-        animateOutThenIn(direction, () => renderStudy(data.study));
-        updateDeckBadge(data.total_loaded, data.remaining_in_deck);
-
-        if (data.message) {
-          setStatus(`Loaded with warnings: ${data.message}`, true);
-        } else {
-          setStatus("");
-        }
+        const entry = {
+          study: data.study,
+          total_loaded: data.total_loaded,
+          remaining_in_deck: data.remaining_in_deck,
+          message: data.message || "",
+        };
+        studyHistory.push(entry);
+        historyIndex = studyHistory.length - 1;
+        renderHistoryEntry(entry, direction);
       } catch (err) {
         setStatus(`Failed to load study: ${err.message}`, true);
       } finally {
@@ -436,29 +474,43 @@
       }
     }
 
-    async function refreshFeeds() {
-      if (loading) return;
-      loading = true;
-      setStatus("Reloading cache file...");
+    async function copyCurrentStudyInformation() {
+      if (!currentStudy) {
+        setStatus("No study loaded yet.", true);
+        return;
+      }
+
+      const text = [
+        `Title: ${currentStudy.title || ""}`,
+        `Journal: ${currentStudy.journal || ""}`,
+        `Published: ${currentStudy.published_label || ""}`,
+        `Link: ${currentStudy.link || ""}`,
+        "",
+        "Abstract:",
+        abstractEl.textContent || "",
+      ].join("\n");
+
       try {
-        const res = await fetch("/api/refresh", { method: "POST" });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        if (data.message) {
-          setStatus(`Cache reload warnings: ${data.message}`, true);
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(text);
         } else {
-          setStatus("Cache reloaded.");
+          const ta = document.createElement("textarea");
+          ta.value = text;
+          ta.style.position = "fixed";
+          ta.style.left = "-9999px";
+          document.body.appendChild(ta);
+          ta.focus();
+          ta.select();
+          document.execCommand("copy");
+          document.body.removeChild(ta);
         }
-        loading = false;
-        await fetchNextStudy("up");
+        setStatus("Study information copied.");
       } catch (err) {
-        setStatus(`Cache reload failed: ${err.message}`, true);
-      } finally {
-        loading = false;
+        setStatus(`Copy failed: ${err.message}`, true);
       }
     }
 
-    function maybeSwipeToNext(startY, endY, startX, endX) {
+    function maybeSwipeNavigate(startY, endY, startX, endX) {
       const dy = startY - endY;
       const dx = Math.abs(startX - endX);
       movedDuringTouch = Math.abs(dy) > 14 || dx > 14;
@@ -466,7 +518,12 @@
       if (now - lastSwipeAt < 240) return;
       if (Math.abs(dy) < 42 || dx > 120 || Math.abs(dy) < (dx * 1.15)) return;
       lastSwipeAt = now;
-      fetchNextStudy(dy > 0 ? "up" : "down");
+
+      if (dy > 0) {
+        showPreviousStudy("up");
+      } else {
+        showNextStudy("down");
+      }
       return true;
     }
 
@@ -478,6 +535,7 @@
       touchCurrentX = t.clientX;
       movedDuringTouch = false;
       swipeConsumed = false;
+      touchStartedInAbstract = card.classList.contains("flipped") && Boolean(ev.target.closest("#study-abstract"));
     }, { passive: true });
 
     card.addEventListener("touchmove", (ev) => {
@@ -489,26 +547,41 @@
       const dx = Math.abs(touchStartX - touchCurrentX);
       movedDuringTouch = Math.abs(dy) > 14 || dx > 14;
 
-      // Once movement is clearly a vertical swipe, stop native page scrolling.
+      if (touchStartedInAbstract) {
+        return;
+      }
+
       if (Math.abs(dy) > 24 && Math.abs(dy) > (dx * 1.2)) {
         ev.preventDefault();
       }
 
-      if (!swipeConsumed && maybeSwipeToNext(touchStartY, touchCurrentY, touchStartX, touchCurrentX)) {
+      if (!swipeConsumed && maybeSwipeNavigate(touchStartY, touchCurrentY, touchStartX, touchCurrentX)) {
         swipeConsumed = true;
       }
     }, { passive: false });
 
     card.addEventListener("touchend", (ev) => {
       if (touchStartY === null || touchStartX === null) return;
+
+      if (touchStartedInAbstract) {
+        touchStartY = null;
+        touchStartX = null;
+        touchCurrentY = null;
+        touchCurrentX = null;
+        touchStartedInAbstract = false;
+        swipeConsumed = false;
+        return;
+      }
+
       const t = ev.changedTouches[0];
       if (!swipeConsumed) {
-        maybeSwipeToNext(touchStartY, t.clientY, touchStartX, t.clientX);
+        maybeSwipeNavigate(touchStartY, t.clientY, touchStartX, t.clientX);
       }
       touchStartY = null;
       touchStartX = null;
       touchCurrentY = null;
       touchCurrentX = null;
+      touchStartedInAbstract = false;
       swipeConsumed = false;
     }, { passive: true });
 
@@ -520,13 +593,21 @@
 
     card.addEventListener("wheel", (ev) => {
       if (Math.abs(ev.deltaY) < 28) return;
-      fetchNextStudy(ev.deltaY > 0 ? "up" : "down");
+      if (card.classList.contains("flipped") && ev.target.closest("#study-abstract")) {
+        return;
+      }
+
+      if (ev.deltaY < 0) {
+        showPreviousStudy("up");
+      } else {
+        showNextStudy("down");
+      }
     }, { passive: true });
 
-    nextBtn.addEventListener("click", () => fetchNextStudy("up"));
-    refreshBtn.addEventListener("click", refreshFeeds);
+    nextBtn.addEventListener("click", () => showNextStudy("down"));
+    copyBtn.addEventListener("click", copyCurrentStudyInformation);
 
-    fetchNextStudy("up");
+    showNextStudy("down");
   </script>
 </body>
 </html>
