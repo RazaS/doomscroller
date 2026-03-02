@@ -30,15 +30,15 @@
       font-family: "Avenir Next", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
       display: grid;
       place-items: center;
-      padding: 20px 12px 16px;
+      padding: 14px 10px 12px;
     }
 
     .shell {
-      width: min(520px, 100%);
-      height: min(94vh, 900px);
+      width: min(620px, 100%);
+      height: min(96vh, 980px);
       display: grid;
-      grid-template-rows: auto 1fr auto auto;
-      gap: 14px;
+      grid-template-rows: auto auto 1fr auto auto;
+      gap: 10px;
     }
 
     .header {
@@ -46,12 +46,12 @@
       justify-content: space-between;
       align-items: flex-end;
       gap: 8px;
-      padding: 0 4px;
+      padding: 0 2px;
     }
 
     .title {
       margin: 0;
-      font-size: clamp(1.2rem, 2.8vw, 1.6rem);
+      font-size: clamp(1.05rem, 2.6vw, 1.35rem);
       line-height: 1.1;
       letter-spacing: 0.02em;
     }
@@ -59,17 +59,57 @@
     .subtitle {
       margin: 2px 0 0;
       color: var(--muted);
-      font-size: 0.89rem;
+      font-size: 0.82rem;
     }
 
     .badge {
-      font-size: 0.76rem;
+      font-size: 0.72rem;
       font-weight: 700;
       border-radius: 999px;
-      padding: 6px 10px;
+      padding: 5px 9px;
       background: rgba(20, 33, 43, 0.09);
       color: var(--ink);
       white-space: nowrap;
+    }
+
+    .auth-row {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr auto auto auto auto;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .auth-row input {
+      min-height: 34px;
+      border: 1px solid rgba(20, 33, 43, 0.2);
+      border-radius: 10px;
+      padding: 6px 8px;
+      font-size: 0.8rem;
+      background: rgba(255, 255, 255, 0.92);
+    }
+
+    .auth-btn {
+      min-height: 34px;
+      border: 0;
+      border-radius: 10px;
+      padding: 6px 8px;
+      font-size: 0.76rem;
+      font-weight: 700;
+      color: #fff;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    #login-btn { background: linear-gradient(130deg, #0f766e, #14b8a6); }
+    #signup-btn { background: linear-gradient(130deg, #1d4ed8, #2563eb); }
+    #logout-btn { background: linear-gradient(130deg, #6b7280, #4b5563); }
+    #archive-btn { background: linear-gradient(130deg, #7c3aed, #6d28d9); }
+
+    .auth-state {
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin: 0;
+      padding-left: 2px;
     }
 
     .card-wrap {
@@ -105,10 +145,10 @@
     .face {
       position: absolute;
       inset: 0;
-      padding: 18px 20px 18px;
+      padding: 14px 14px 14px;
       display: grid;
       grid-template-rows: auto auto auto auto 1fr auto;
-      gap: 12px;
+      gap: 10px;
       backface-visibility: hidden;
       -webkit-backface-visibility: hidden;
     }
@@ -133,9 +173,9 @@
       width: fit-content;
       border: 1px solid rgba(15, 118, 110, 0.36);
       border-radius: 999px;
-      padding: 6px 10px;
+      padding: 5px 9px;
       font-weight: 700;
-      font-size: 0.8rem;
+      font-size: 0.74rem;
       letter-spacing: 0.04em;
       text-transform: uppercase;
       color: var(--accent);
@@ -144,26 +184,27 @@
 
     .study-title {
       margin: 0;
-      line-height: 1.18;
+      line-height: 1.15;
       font-weight: 800;
-      font-size: clamp(1.18rem, 4vw, 1.72rem);
+      font-size: clamp(1.05rem, 3.6vw, 1.45rem);
     }
 
     .meta {
       margin: 0;
       color: var(--muted);
-      font-size: 0.9rem;
+      font-size: 0.82rem;
       font-weight: 600;
     }
 
     .summary {
       margin: 0;
       overflow: auto;
-      line-height: 1.47;
+      line-height: 1.42;
       color: #1f313f;
       padding-right: 4px;
       overscroll-behavior: contain;
       scrollbar-width: thin;
+      font-size: 0.9rem;
     }
 
     .study-link {
@@ -171,66 +212,53 @@
       align-items: center;
       justify-content: center;
       border-radius: 12px;
-      min-height: 42px;
+      min-height: 36px;
       text-decoration: none;
       font-weight: 700;
       letter-spacing: 0.01em;
       color: #fff;
       background: linear-gradient(120deg, var(--accent), #1f9087);
       box-shadow: 0 8px 18px rgba(15, 118, 110, 0.25);
-      padding: 10px 12px;
+      padding: 8px 10px;
+      font-size: 0.8rem;
     }
 
     .flip-hint {
       margin: 0;
       color: var(--muted);
-      font-size: 0.78rem;
+      font-size: 0.74rem;
       font-weight: 600;
-      line-height: 1.35;
+      line-height: 1.3;
     }
 
     .controls {
       display: grid;
-      grid-template-columns: 1fr 1fr 1fr 1fr;
-      gap: 10px;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
     }
 
-    button {
+    .ctl-btn {
       border: 0;
-      border-radius: 14px;
-      min-height: 44px;
-      font-size: 0.88rem;
+      border-radius: 12px;
+      min-height: 34px;
+      font-size: 0.74rem;
       font-weight: 700;
       color: #fff;
       cursor: pointer;
-      padding: 8px 6px;
+      padding: 6px 4px;
+      white-space: nowrap;
     }
 
-    #next-btn {
-      background: linear-gradient(130deg, var(--accent-2), #ea580c);
-      box-shadow: 0 7px 16px rgba(194, 65, 12, 0.27);
-    }
-
-    #prev-btn {
-      background: linear-gradient(130deg, #9a3412, #c2410c);
-      box-shadow: 0 7px 16px rgba(154, 52, 18, 0.27);
-    }
-
-    #copy-btn {
-      background: linear-gradient(130deg, #334155, #1f2937);
-      box-shadow: 0 7px 16px rgba(31, 41, 55, 0.24);
-    }
-
-    #copy-list-btn {
-      background: linear-gradient(130deg, #1d4ed8, #2563eb);
-      box-shadow: 0 7px 16px rgba(37, 99, 235, 0.24);
-    }
+    #next-btn { background: linear-gradient(130deg, var(--accent-2), #ea580c); }
+    #prev-btn { background: linear-gradient(130deg, #9a3412, #c2410c); }
+    #copy-btn { background: linear-gradient(130deg, #334155, #1f2937); }
+    #copy-list-btn { background: linear-gradient(130deg, #1d4ed8, #2563eb); }
 
     .status {
       margin: 0 2px;
       min-height: 1.2em;
       color: var(--muted);
-      font-size: 0.86rem;
+      font-size: 0.8rem;
       text-align: center;
     }
 
@@ -238,20 +266,89 @@
       margin: 2px 2px 0;
       text-align: center;
       color: var(--muted);
-      font-size: 0.8rem;
+      font-size: 0.74rem;
     }
 
-    @media (max-width: 600px) {
-      body { padding: 12px 10px 10px; }
+    .archive-panel {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: rgba(20, 33, 43, 0.45);
+      z-index: 20;
+      padding: 14px;
+    }
 
-      .shell {
-        height: 96vh;
-        gap: 10px;
-      }
+    .archive-panel.open { display: flex; }
 
-      .face { padding: 14px 14px 14px; }
+    .archive-card {
+      width: min(760px, 96vw);
+      max-height: 82vh;
+      background: #fffef9;
+      border-radius: 14px;
+      border: 1px solid rgba(20, 33, 43, 0.08);
+      box-shadow: var(--shadow);
+      display: grid;
+      grid-template-rows: auto 1fr;
+      overflow: hidden;
+    }
 
-      .controls { grid-template-columns: 1fr; }
+    .archive-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 12px;
+      border-bottom: 1px solid rgba(20, 33, 43, 0.09);
+      font-size: 0.86rem;
+      font-weight: 700;
+    }
+
+    .archive-close {
+      border: 0;
+      border-radius: 8px;
+      min-height: 28px;
+      padding: 4px 8px;
+      background: #334155;
+      color: #fff;
+      font-size: 0.74rem;
+      cursor: pointer;
+    }
+
+    .archive-list {
+      overflow: auto;
+      padding: 8px 12px 12px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .archive-item {
+      border: 1px solid rgba(20, 33, 43, 0.09);
+      border-radius: 10px;
+      padding: 8px;
+      background: #fff;
+    }
+
+    .archive-item h4 {
+      margin: 0 0 4px;
+      font-size: 0.86rem;
+      line-height: 1.25;
+    }
+
+    .archive-item p {
+      margin: 0;
+      font-size: 0.74rem;
+      color: var(--muted);
+    }
+
+    @media (max-width: 760px) {
+      .auth-row { grid-template-columns: 1fr 1fr; }
+      .auth-state { grid-column: 1 / -1; }
+      .controls { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    }
+
+    @media (max-width: 520px) {
+      .controls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
   </style>
 </head>
@@ -265,6 +362,16 @@
       <div class="badge" id="deck-badge">Loading...</div>
     </header>
 
+    <section class="auth-row">
+      <input id="username-input" type="text" placeholder="username" autocomplete="username">
+      <input id="password-input" type="password" placeholder="password" autocomplete="current-password">
+      <button id="login-btn" class="auth-btn" type="button">Login</button>
+      <button id="signup-btn" class="auth-btn" type="button">Sign Up</button>
+      <button id="logout-btn" class="auth-btn" type="button">Logout</button>
+      <button id="archive-btn" class="auth-btn" type="button">Archive (0)</button>
+      <p class="auth-state" id="auth-state">Not logged in</p>
+    </section>
+
     <section class="card-wrap">
       <article id="study-card" class="card" aria-live="polite">
         <div class="card-inner">
@@ -272,7 +379,7 @@
             <div class="journal" id="journal">Loading</div>
             <h2 class="study-title" id="study-title">Fetching studies...</h2>
             <p class="meta" id="study-meta">Please wait.</p>
-            <p class="flip-hint" id="front-instructions">Swipe up: next | Swipe down: previous | Swipe right: save to list | Tap: flip for abstract</p>
+            <p class="flip-hint">Swipe up: next | Swipe down: previous | Swipe right: save to archive | Tap: flip</p>
             <p class="summary" id="study-front-summary">Tap to flip for abstract.</p>
             <a id="study-link" class="study-link" href="#" target="_blank" rel="noopener noreferrer">Open study</a>
           </section>
@@ -281,22 +388,32 @@
             <h2 class="study-title" id="study-back-title">Fetching studies...</h2>
             <p class="meta" id="abstract-meta">Fetching from PubMed...</p>
             <p class="summary" id="study-abstract">Loading abstract...</p>
-            <p class="flip-hint">Swipe up: next | Swipe down: previous | Swipe right: save</p>
+            <p class="flip-hint">Scrolling abstract will not change studies.</p>
           </section>
         </div>
       </article>
     </section>
 
     <section class="controls">
-      <button id="prev-btn" type="button">←</button>
-      <button id="next-btn" type="button">→</button>
-      <button id="copy-btn" type="button">Copy</button>
-      <button id="copy-list-btn" type="button">Copy List (0)</button>
+      <button id="prev-btn" class="ctl-btn" type="button">←</button>
+      <button id="next-btn" class="ctl-btn" type="button">→</button>
+      <button id="copy-btn" class="ctl-btn" type="button">Copy</button>
+      <button id="copy-list-btn" class="ctl-btn" type="button">Copy List</button>
     </section>
 
     <p class="status" id="status"></p>
-    <p class="hint">Use vertical swipe to navigate, right swipe to save, tap card to flip.</p>
+    <p class="hint">Buttons are compact to stay on one row when space allows.</p>
   </main>
+
+  <section class="archive-panel" id="archive-panel">
+    <div class="archive-card">
+      <div class="archive-head">
+        <span id="archive-title">Your Archive</span>
+        <button id="archive-close" class="archive-close" type="button">Close</button>
+      </div>
+      <div id="archive-list" class="archive-list"></div>
+    </div>
+  </section>
 
   <script>
     const card = document.getElementById("study-card");
@@ -310,10 +427,24 @@
     const linkEl = document.getElementById("study-link");
     const statusEl = document.getElementById("status");
     const badgeEl = document.getElementById("deck-badge");
+
+    const usernameInput = document.getElementById("username-input");
+    const passwordInput = document.getElementById("password-input");
+    const loginBtn = document.getElementById("login-btn");
+    const signupBtn = document.getElementById("signup-btn");
+    const logoutBtn = document.getElementById("logout-btn");
+    const archiveBtn = document.getElementById("archive-btn");
+    const authStateEl = document.getElementById("auth-state");
+
     const prevBtn = document.getElementById("prev-btn");
     const nextBtn = document.getElementById("next-btn");
     const copyBtn = document.getElementById("copy-btn");
     const copyListBtn = document.getElementById("copy-list-btn");
+
+    const archivePanel = document.getElementById("archive-panel");
+    const archiveTitle = document.getElementById("archive-title");
+    const archiveList = document.getElementById("archive-list");
+    const archiveClose = document.getElementById("archive-close");
 
     let loading = false;
     let touchStartY = null;
@@ -331,16 +462,97 @@
     const studyHistory = [];
     let latestTotalLoaded = 0;
     let latestRemainingInDeck = 0;
-    const savedStudies = [];
-    const savedStudyIds = new Set();
+    let archiveEntries = [];
+    let currentUsername = "";
 
     function setStatus(text, isError = false) {
       statusEl.textContent = text || "";
       statusEl.style.color = isError ? "#b91c1c" : "";
     }
 
-    function updateSavedListButton() {
-      copyListBtn.textContent = `Copy List (${savedStudies.length})`;
+    function updateArchiveButton() {
+      archiveBtn.textContent = `Archive (${archiveEntries.length})`;
+    }
+
+    function updateAuthUI() {
+      if (currentUsername) {
+        authStateEl.textContent = `Logged in as ${currentUsername}`;
+      } else {
+        authStateEl.textContent = "Not logged in";
+      }
+    }
+
+    async function apiJson(path, options = {}) {
+      const res = await fetch(path, options);
+      const data = await res.json().catch(() => ({}));
+      return { res, data };
+    }
+
+    async function syncAuthState() {
+      const { data } = await apiJson("/api/me");
+      currentUsername = data.authenticated ? (data.username || "") : "";
+      updateAuthUI();
+      if (currentUsername) {
+        await fetchArchive();
+      } else {
+        archiveEntries = [];
+        updateArchiveButton();
+      }
+    }
+
+    async function signup() {
+      const username = usernameInput.value.trim();
+      const password = passwordInput.value;
+      if (!username || !password) {
+        setStatus("Username and password are required.", true);
+        return;
+      }
+      const { data } = await apiJson("/api/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+      if (!data.ok) {
+        setStatus(data.message || "Signup failed.", true);
+        return;
+      }
+      currentUsername = data.username || "";
+      passwordInput.value = "";
+      updateAuthUI();
+      await fetchArchive();
+      setStatus("Account created and logged in.");
+    }
+
+    async function login() {
+      const username = usernameInput.value.trim();
+      const password = passwordInput.value;
+      if (!username || !password) {
+        setStatus("Username and password are required.", true);
+        return;
+      }
+      const { data } = await apiJson("/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+      if (!data.ok) {
+        setStatus(data.message || "Login failed.", true);
+        return;
+      }
+      currentUsername = data.username || "";
+      passwordInput.value = "";
+      updateAuthUI();
+      await fetchArchive();
+      setStatus("Logged in.");
+    }
+
+    async function logout() {
+      await apiJson("/api/logout", { method: "POST" });
+      currentUsername = "";
+      archiveEntries = [];
+      updateAuthUI();
+      updateArchiveButton();
+      setStatus("Logged out.");
     }
 
     function animateOutThenIn(direction, updater) {
@@ -459,7 +671,6 @@
 
       loading = true;
       setStatus("Loading next study...");
-
       try {
         const res = await fetch("/api/next");
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -467,7 +678,7 @@
 
         if (!data.ok || !data.study) {
           updateDeckBadge(0, 0);
-          setStatus(data.message || "No cached studies available. Run the offline updater script.", true);
+          setStatus(data.message || "No cached studies available.", true);
           return;
         }
 
@@ -504,7 +715,6 @@
         await navigator.clipboard.writeText(text);
         return;
       }
-
       const ta = document.createElement("textarea");
       ta.value = text;
       ta.style.position = "fixed";
@@ -516,27 +726,77 @@
       document.body.removeChild(ta);
     }
 
-    function addCurrentStudyToSavedList() {
+    async function fetchArchive() {
+      if (!currentUsername) {
+        archiveEntries = [];
+        updateArchiveButton();
+        return;
+      }
+      const { res, data } = await apiJson("/api/archive");
+      if (!res.ok || !data.ok) {
+        archiveEntries = [];
+      } else {
+        archiveEntries = Array.isArray(data.entries) ? data.entries : [];
+      }
+      updateArchiveButton();
+    }
+
+    async function addCurrentStudyToArchive() {
+      if (!currentUsername) {
+        setStatus("Login required to save to personal archive.", true);
+        return;
+      }
       if (!currentStudy || !currentStudyId) {
         setStatus("No study loaded yet.", true);
         return;
       }
-      if (savedStudyIds.has(currentStudyId)) {
-        setStatus("Study already in saved list.");
-        return;
-      }
 
-      savedStudyIds.add(currentStudyId);
-      savedStudies.push({
-        id: currentStudyId,
+      const payload = {
+        study_id: currentStudyId,
         title: currentStudy.title || "",
         journal: currentStudy.journal || "",
         published_label: currentStudy.published_label || "",
         link: currentStudy.link || "",
         abstract: abstractEl.textContent || "",
+      };
+      const { data } = await apiJson("/api/archive", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
       });
-      updateSavedListButton();
-      setStatus(`Added to saved list (${savedStudies.length}).`);
+
+      if (!data.ok) {
+        setStatus(data.message || "Could not save to archive.", true);
+        return;
+      }
+      await fetchArchive();
+      setStatus("Saved to your personal archive.");
+    }
+
+    function renderArchivePanel() {
+      archiveTitle.textContent = currentUsername ? `${currentUsername}'s Archive (${archiveEntries.length})` : "Archive";
+      if (!archiveEntries.length) {
+        archiveList.innerHTML = '<div class="archive-item"><h4>No saved studies</h4><p>Swipe right on a study to save it.</p></div>';
+        return;
+      }
+      archiveList.innerHTML = archiveEntries
+        .map((s) => {
+          const safeTitle = (s.title || "Untitled").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+          const safeMeta = `${s.journal || ""} ${s.published_label || ""}`.trim().replace(/</g, "&lt;").replace(/>/g, "&gt;");
+          const link = s.link ? `<p><a href="${s.link}" target="_blank" rel="noopener noreferrer">Open</a></p>` : "";
+          return `<div class="archive-item"><h4>${safeTitle}</h4><p>${safeMeta}</p>${link}</div>`;
+        })
+        .join("");
+    }
+
+    async function openArchivePanel() {
+      if (!currentUsername) {
+        setStatus("Login required to view personal archive.", true);
+        return;
+      }
+      await fetchArchive();
+      renderArchivePanel();
+      archivePanel.classList.add("open");
     }
 
     async function copyCurrentStudyInformation() {
@@ -544,7 +804,6 @@
         setStatus("No study loaded yet.", true);
         return;
       }
-
       try {
         await copyTextToClipboard(buildStudyText(currentStudy, abstractEl.textContent || ""));
         setStatus("Study information copied.");
@@ -553,19 +812,24 @@
       }
     }
 
-    async function copySavedListInformation() {
-      if (!savedStudies.length) {
-        setStatus("Saved list is empty.", true);
+    async function copyArchiveListInformation() {
+      if (!currentUsername) {
+        setStatus("Login required to copy personal archive list.", true);
         return;
       }
-
-      const body = savedStudies
-        .map((s, i) => `Study ${i + 1}\n${buildStudyText(s, s.abstract)}`)
+      if (!archiveEntries.length) {
+        await fetchArchive();
+      }
+      if (!archiveEntries.length) {
+        setStatus("Archive is empty.", true);
+        return;
+      }
+      const body = archiveEntries
+        .map((s, i) => `Study ${i + 1}\n${buildStudyText(s, s.abstract || "")}`)
         .join("\n\n----------------------------------------\n\n");
-
       try {
         await copyTextToClipboard(body);
-        setStatus(`Copied saved list (${savedStudies.length} studies).`);
+        setStatus(`Copied archive list (${archiveEntries.length} studies).`);
       } catch (err) {
         setStatus(`Copy list failed: ${err.message}`, true);
       }
@@ -576,18 +840,16 @@
       const dxSigned = endX - startX;
       const dxAbs = Math.abs(dxSigned);
       movedDuringTouch = Math.abs(dy) > 14 || dxAbs > 14;
-
       const now = Date.now();
       if (now - lastSwipeAt < 240) return;
 
-      // Right swipe = save current study to list.
+      // Right swipe saves to personal archive.
       if (dxSigned > 56 && dxAbs > (Math.abs(dy) * 1.2) && Math.abs(dy) < 100) {
         lastSwipeAt = now;
-        addCurrentStudyToSavedList();
+        addCurrentStudyToArchive();
         return true;
       }
 
-      // Vertical swipe = navigation.
       if (Math.abs(dy) < 42 || dxAbs > 120 || Math.abs(dy) < (dxAbs * 1.15)) return;
       lastSwipeAt = now;
       if (dy > 0) {
@@ -673,12 +935,23 @@
       }
     }, { passive: true });
 
+    archiveClose.addEventListener("click", () => archivePanel.classList.remove("open"));
+    archivePanel.addEventListener("click", (ev) => {
+      if (ev.target === archivePanel) archivePanel.classList.remove("open");
+    });
+
+    loginBtn.addEventListener("click", login);
+    signupBtn.addEventListener("click", signup);
+    logoutBtn.addEventListener("click", logout);
+    archiveBtn.addEventListener("click", openArchivePanel);
+
     prevBtn.addEventListener("click", () => showPreviousStudy("down"));
     nextBtn.addEventListener("click", () => showNextStudy("down"));
     copyBtn.addEventListener("click", copyCurrentStudyInformation);
-    copyListBtn.addEventListener("click", copySavedListInformation);
+    copyListBtn.addEventListener("click", copyArchiveListInformation);
 
-    updateSavedListButton();
+    updateArchiveButton();
+    syncAuthState();
     showNextStudy("down");
   </script>
 </body>

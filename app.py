@@ -5,6 +5,7 @@ import json
 import os
 import random
 import re
+import sqlite3
 import threading
 import time
 from datetime import datetime, timedelta, timezone
@@ -16,7 +17,8 @@ from urllib.parse import unquote, urlencode
 from urllib.request import Request, urlopen
 import xml.etree.ElementTree as ET
 
-from flask import Flask, jsonify, render_template
+from flask import Flask, jsonify, render_template, request, session
+from werkzeug.security import check_password_hash, generate_password_hash
 
 try:
     from third_party.pubmed_sieve import helpers as sieve_helpers
@@ -44,6 +46,7 @@ PUBMED_SIEVE_MAX_ITEMS = 150
 DATA_DIR = APP_ROOT / "data"
 STUDIES_CACHE_PATH = DATA_DIR / "studies_cache.json"
 LEGACY_STUDIES_CACHE_PATH = APP_ROOT / "cache" / "studies_cache.json"
+APP_DB_PATH = DATA_DIR / "app.db"
 
 
 def local_name(tag: str) -> str:
@@ -501,6 +504,11 @@ class StudyDeck:
                 "last_refresh_iso": self._last_refresh_iso(),
             }
 
+    def get_study_by_id(self, study_id: str) -> Optional[Dict]:
+        self.maybe_refresh()
+        with self.lock:
+            return next((item for item in self.items if item.get("id") == study_id), None)
+
     def _last_refresh_iso(self) -> str:
         if not self.last_refresh_ts:
             return ""
@@ -635,8 +643,75 @@ class StudyDeck:
         return combined if len(combined) <= MAX_ABSTRACT_LEN else combined[:MAX_ABSTRACT_LEN].rstrip() + "..."
 
 
+def get_db() -> sqlite3.Connection:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(APP_DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def init_db() -> None:
+    with get_db() as conn:
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL UNIQUE,
+                password_hash TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS archives (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                study_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                journal TEXT,
+                published_label TEXT,
+                link TEXT,
+                abstract TEXT,
+                saved_at TEXT NOT NULL,
+                UNIQUE(user_id, study_id),
+                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+            """
+        )
+
+
+def now_iso_utc() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def parse_auth_payload() -> Dict:
+    payload = request.get_json(silent=True) or {}
+    username = str(payload.get("username") or "").strip()
+    password = str(payload.get("password") or "")
+    return {"username": username, "password": password}
+
+
+def current_user_id() -> Optional[int]:
+    value = session.get("user_id")
+    try:
+        return int(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def current_user_username() -> str:
+    return str(session.get("username") or "")
+
+
+def require_user() -> Optional[Dict]:
+    user_id = current_user_id()
+    if user_id is None:
+        return {"ok": False, "message": "Login required."}
+    return None
+
+
 app = Flask(__name__)
+app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY") or "dev-secret-change-me"
 deck = StudyDeck(FEEDS_CSV_PATH)
+init_db()
 
 
 @app.get("/")
@@ -670,6 +745,143 @@ def api_refresh():
 @app.get("/api/abstract/<study_id>")
 def api_abstract(study_id: str):
     return jsonify(deck.get_abstract(study_id))
+
+
+@app.get("/api/me")
+def api_me():
+    user_id = current_user_id()
+    if user_id is None:
+        return jsonify({"ok": True, "authenticated": False, "username": ""})
+    return jsonify({"ok": True, "authenticated": True, "username": current_user_username()})
+
+
+@app.post("/api/signup")
+def api_signup():
+    auth = parse_auth_payload()
+    username = auth["username"]
+    password = auth["password"]
+    if len(username) < 3:
+        return jsonify({"ok": False, "message": "Username must be at least 3 characters."}), 400
+    if len(password) < 6:
+        return jsonify({"ok": False, "message": "Password must be at least 6 characters."}), 400
+
+    password_hash = generate_password_hash(password)
+    try:
+        with get_db() as conn:
+            conn.execute(
+                "INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, ?)",
+                (username, password_hash, now_iso_utc()),
+            )
+            user_id = int(conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()["id"])
+    except sqlite3.IntegrityError:
+        return jsonify({"ok": False, "message": "Username already exists."}), 409
+
+    session["user_id"] = user_id
+    session["username"] = username
+    return jsonify({"ok": True, "message": "Account created.", "username": username})
+
+
+@app.post("/api/login")
+def api_login():
+    auth = parse_auth_payload()
+    username = auth["username"]
+    password = auth["password"]
+    if not username or not password:
+        return jsonify({"ok": False, "message": "Username and password are required."}), 400
+
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT id, username, password_hash FROM users WHERE username = ?",
+            (username,),
+        ).fetchone()
+    if row is None or not check_password_hash(str(row["password_hash"]), password):
+        return jsonify({"ok": False, "message": "Invalid username or password."}), 401
+
+    session["user_id"] = int(row["id"])
+    session["username"] = str(row["username"])
+    return jsonify({"ok": True, "message": "Logged in.", "username": str(row["username"])})
+
+
+@app.post("/api/logout")
+def api_logout():
+    session.clear()
+    return jsonify({"ok": True, "message": "Logged out."})
+
+
+@app.get("/api/archive")
+def api_archive_list():
+    unauth = require_user()
+    if unauth:
+        return jsonify(unauth), 401
+
+    user_id = int(current_user_id() or 0)
+    with get_db() as conn:
+        rows = conn.execute(
+            """
+            SELECT study_id, title, journal, published_label, link, abstract, saved_at
+            FROM archives
+            WHERE user_id = ?
+            ORDER BY saved_at DESC
+            """,
+            (user_id,),
+        ).fetchall()
+
+    entries = [
+        {
+            "study_id": str(r["study_id"] or ""),
+            "title": str(r["title"] or ""),
+            "journal": str(r["journal"] or ""),
+            "published_label": str(r["published_label"] or ""),
+            "link": str(r["link"] or ""),
+            "abstract": str(r["abstract"] or ""),
+            "saved_at": str(r["saved_at"] or ""),
+        }
+        for r in rows
+    ]
+    return jsonify({"ok": True, "entries": entries})
+
+
+@app.post("/api/archive")
+def api_archive_add():
+    unauth = require_user()
+    if unauth:
+        return jsonify(unauth), 401
+
+    payload = request.get_json(silent=True) or {}
+    study_id = str(payload.get("study_id") or "").strip()
+    if not study_id:
+        return jsonify({"ok": False, "message": "study_id is required."}), 400
+
+    study = deck.get_study_by_id(study_id)
+    base = study or {}
+    title = str(payload.get("title") or base.get("title") or "").strip()
+    if not title:
+        return jsonify({"ok": False, "message": "Study title is required."}), 400
+
+    journal = str(payload.get("journal") or base.get("journal") or "").strip()
+    published_label = str(payload.get("published_label") or base.get("published_label") or "").strip()
+    link = str(payload.get("link") or base.get("link") or "").strip()
+    abstract_text = str(payload.get("abstract") or payload.get("summary") or base.get("summary") or "").strip()
+    saved_at = now_iso_utc()
+    user_id = int(current_user_id() or 0)
+
+    with get_db() as conn:
+        conn.execute(
+            """
+            INSERT INTO archives (user_id, study_id, title, journal, published_label, link, abstract, saved_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(user_id, study_id) DO UPDATE SET
+                title=excluded.title,
+                journal=excluded.journal,
+                published_label=excluded.published_label,
+                link=excluded.link,
+                abstract=excluded.abstract,
+                saved_at=excluded.saved_at
+            """,
+            (user_id, study_id, title, journal, published_label, link, abstract_text, saved_at),
+        )
+
+    return jsonify({"ok": True, "message": "Saved to your archive."})
 
 
 if __name__ == "__main__":

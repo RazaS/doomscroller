@@ -9,6 +9,9 @@ Default feed is the latest `Transfusion` RSS feed:
 ## Features
 
 - Full-screen, mobile-first swipe UI (swipe up/down on the study card).
+- User accounts (signup/login/logout) with personal archived studies.
+- Swipe right saves current study to your personal archive.
+- Archive button opens your saved list; copy buttons support current study and full archive list.
 - Tap-to-flip card: back side fetches abstract text from PubMed (falls back to feed summary if no match).
 - Randomized study ordering from your configured feeds.
 - Additional PubMed stream via `pubmed-sieve`: pulls studies matching `transfusion` in title/abstract (`[tiab]`) from the last 6 months.
