@@ -103,6 +103,30 @@ sudo systemctl restart doomscroller-autoupdate.timer
 sudo systemctl start doomscroller-autoupdate.service
 ```
 
+## Archive Email Setup
+
+Archive modal includes an **Email Archive** action. Configure SMTP via environment variables:
+
+- `ARCHIVE_EMAIL_SMTP_HOST` (required)
+- `ARCHIVE_EMAIL_SMTP_PORT` (default `587`)
+- `ARCHIVE_EMAIL_SMTP_USER` (optional, but usually required by provider)
+- `ARCHIVE_EMAIL_SMTP_PASS` (optional, but usually required by provider)
+- `ARCHIVE_EMAIL_FROM` (optional; defaults to `ARCHIVE_EMAIL_SMTP_USER`)
+- `ARCHIVE_EMAIL_USE_TLS` (default `1`)
+- `ARCHIVE_EMAIL_USE_SSL` (default `0`)
+
+Example:
+
+```bash
+export ARCHIVE_EMAIL_SMTP_HOST=smtp.hostinger.com
+export ARCHIVE_EMAIL_SMTP_PORT=587
+export ARCHIVE_EMAIL_SMTP_USER=you@yourdomain.com
+export ARCHIVE_EMAIL_SMTP_PASS='app-password-here'
+export ARCHIVE_EMAIL_FROM='TMScroller <you@yourdomain.com>'
+export ARCHIVE_EMAIL_USE_TLS=1
+export ARCHIVE_EMAIL_USE_SSL=0
+```
+
 ## PubMed Sieve Integration
 
 This app vendors code from [pubmed-sieve](https://github.com/hbhargava7/pubmed-sieve) under `third_party/pubmed_sieve`.

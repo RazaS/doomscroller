@@ -6,9 +6,12 @@ import os
 import random
 import re
 import sqlite3
+import smtplib
+import ssl
 import threading
 import time
 from datetime import datetime, timedelta, timezone
+from email.message import EmailMessage
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -51,6 +54,18 @@ STUDIES_CACHE_PATH = DATA_DIR / "studies_cache.json"
 LEGACY_STUDIES_CACHE_PATH = APP_ROOT / "cache" / "studies_cache.json"
 APP_DB_PATH = DATA_DIR / "app.db"
 FRONTEND_DIST_DIR = APP_ROOT / "frontend" / "dist"
+ARCHIVE_EMAIL_SMTP_HOST = os.getenv("ARCHIVE_EMAIL_SMTP_HOST", "").strip()
+_smtp_port_raw = os.getenv("ARCHIVE_EMAIL_SMTP_PORT", "587").strip() or "587"
+try:
+    ARCHIVE_EMAIL_SMTP_PORT = int(_smtp_port_raw)
+except ValueError:
+    ARCHIVE_EMAIL_SMTP_PORT = 587
+ARCHIVE_EMAIL_SMTP_USER = os.getenv("ARCHIVE_EMAIL_SMTP_USER", "").strip()
+ARCHIVE_EMAIL_SMTP_PASS = os.getenv("ARCHIVE_EMAIL_SMTP_PASS", "")
+ARCHIVE_EMAIL_FROM = os.getenv("ARCHIVE_EMAIL_FROM", "").strip()
+ARCHIVE_EMAIL_USE_TLS = os.getenv("ARCHIVE_EMAIL_USE_TLS", "1").strip().lower() not in {"0", "false", "no", "off"}
+ARCHIVE_EMAIL_USE_SSL = os.getenv("ARCHIVE_EMAIL_USE_SSL", "0").strip().lower() in {"1", "true", "yes", "on"}
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
 def local_name(tag: str) -> str:
@@ -904,6 +919,10 @@ def now_iso_utc() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def is_valid_email_address(value: str) -> bool:
+    return bool(EMAIL_RE.fullmatch((value or "").strip()))
+
+
 def parse_auth_payload() -> Dict:
     payload = request.get_json(silent=True) or {}
     username = str(payload.get("username") or "").strip()
@@ -991,6 +1010,91 @@ def mark_study_seen_for_user(user_id: int, study_id: str) -> None:
             )
     except Exception:
         return
+
+
+def get_archive_entries_for_user(user_id: int) -> List[Dict]:
+    with get_db() as conn:
+        rows = conn.execute(
+            """
+            SELECT study_id, title, journal, published_label, link, abstract, saved_at
+            FROM archives
+            WHERE user_id = ?
+            ORDER BY saved_at DESC
+            """,
+            (user_id,),
+        ).fetchall()
+
+    return [
+        {
+            "study_id": str(r["study_id"] or ""),
+            "title": str(r["title"] or ""),
+            "journal": str(r["journal"] or ""),
+            "published_label": str(r["published_label"] or ""),
+            "link": str(r["link"] or ""),
+            "abstract": str(r["abstract"] or ""),
+            "saved_at": str(r["saved_at"] or ""),
+        }
+        for r in rows
+    ]
+
+
+def format_archive_email_body(username: str, entries: List[Dict]) -> str:
+    lines = [
+        f"TMScroller archive for: {username}",
+        f"Exported at: {datetime.now(timezone.utc).isoformat()}",
+        f"Total studies: {len(entries)}",
+        "",
+    ]
+    for idx, entry in enumerate(entries, start=1):
+        lines.append(f"Study {idx}")
+        lines.append(f"Title: {entry.get('title', '')}")
+        lines.append(f"Journal: {entry.get('journal', '')}")
+        lines.append(f"Published: {entry.get('published_label', '')}")
+        lines.append(f"Link: {entry.get('link', '')}")
+        lines.append("")
+        lines.append("Abstract:")
+        lines.append(entry.get("abstract", "") or "")
+        lines.append("")
+        lines.append("-" * 40)
+        lines.append("")
+    return "\n".join(lines).strip()
+
+
+def send_archive_email(recipient_email: str, username: str, entries: List[Dict]) -> None:
+    smtp_host = ARCHIVE_EMAIL_SMTP_HOST
+    smtp_port = ARCHIVE_EMAIL_SMTP_PORT
+    smtp_user = ARCHIVE_EMAIL_SMTP_USER
+    smtp_pass = ARCHIVE_EMAIL_SMTP_PASS
+    sender = ARCHIVE_EMAIL_FROM or smtp_user
+
+    if not smtp_host:
+        raise RuntimeError("Email server is not configured.")
+    if not sender:
+        raise RuntimeError("Email sender is not configured.")
+
+    msg = EmailMessage()
+    msg["Subject"] = f"TMScroller Archive ({len(entries)} studies)"
+    msg["From"] = sender
+    msg["To"] = recipient_email
+    msg.set_content(format_archive_email_body(username=username, entries=entries))
+
+    timeout_seconds = 20
+    tls_context = ssl.create_default_context()
+    if ARCHIVE_EMAIL_USE_SSL:
+        with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=timeout_seconds, context=tls_context) as server:
+            if smtp_user:
+                server.login(smtp_user, smtp_pass)
+            server.send_message(msg)
+        return
+
+    with smtplib.SMTP(smtp_host, smtp_port, timeout=timeout_seconds) as server:
+        server.ehlo()
+        if ARCHIVE_EMAIL_USE_TLS:
+            server.starttls(context=tls_context)
+            server.ehlo()
+        if smtp_user:
+            server.login(smtp_user, smtp_pass)
+        server.send_message(msg)
 
 
 def register_not_transfusion_vote(study_id: str, user_id: int) -> Dict:
@@ -1224,29 +1328,7 @@ def api_archive_list():
         return jsonify(unauth), 401
 
     user_id = int(current_user_id() or 0)
-    with get_db() as conn:
-        rows = conn.execute(
-            """
-            SELECT study_id, title, journal, published_label, link, abstract, saved_at
-            FROM archives
-            WHERE user_id = ?
-            ORDER BY saved_at DESC
-            """,
-            (user_id,),
-        ).fetchall()
-
-    entries = [
-        {
-            "study_id": str(r["study_id"] or ""),
-            "title": str(r["title"] or ""),
-            "journal": str(r["journal"] or ""),
-            "published_label": str(r["published_label"] or ""),
-            "link": str(r["link"] or ""),
-            "abstract": str(r["abstract"] or ""),
-            "saved_at": str(r["saved_at"] or ""),
-        }
-        for r in rows
-    ]
+    entries = get_archive_entries_for_user(user_id)
     return jsonify({"ok": True, "entries": entries})
 
 
@@ -1292,6 +1374,34 @@ def api_archive_add():
 
     track_usage_event("archive_save", {"study_id": study_id})
     return jsonify({"ok": True, "message": "Saved to your archive."})
+
+
+@app.post("/api/archive/email")
+def api_archive_email():
+    unauth = require_user()
+    if unauth:
+        return jsonify(unauth), 401
+
+    payload = request.get_json(silent=True) or {}
+    recipient_email = str(payload.get("email") or "").strip()
+    if not is_valid_email_address(recipient_email):
+        return jsonify({"ok": False, "message": "A valid recipient email is required."}), 400
+
+    user_id = int(current_user_id() or 0)
+    username = current_user_username() or "user"
+    entries = get_archive_entries_for_user(user_id)
+    if not entries:
+        return jsonify({"ok": False, "message": "Archive is empty."}), 400
+
+    try:
+        send_archive_email(recipient_email=recipient_email, username=username, entries=entries)
+    except RuntimeError as exc:
+        return jsonify({"ok": False, "message": str(exc)}), 503
+    except Exception as exc:
+        return jsonify({"ok": False, "message": f"Email send failed: {exc}"}), 502
+
+    track_usage_event("archive_email_sent", {"to": recipient_email, "count": len(entries)})
+    return jsonify({"ok": True, "message": f"Archive emailed to {recipient_email}."})
 
 
 @app.post("/api/study/not-transfusion")
