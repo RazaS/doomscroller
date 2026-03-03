@@ -884,6 +884,18 @@ def init_db() -> None:
 
             CREATE INDEX IF NOT EXISTS idx_user_hidden_studies_user_id
             ON user_hidden_studies (user_id);
+
+            CREATE TABLE IF NOT EXISTS user_seen_studies (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                study_id TEXT NOT NULL,
+                seen_at TEXT NOT NULL,
+                UNIQUE(user_id, study_id),
+                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_user_seen_studies_user_id
+            ON user_seen_studies (user_id);
             """
         )
 
@@ -950,6 +962,35 @@ def hide_study_for_user(user_id: int, study_id: str) -> None:
             """,
             (user_id, study_id, now_iso_utc()),
         )
+
+
+def get_user_seen_study_ids(user_id: int) -> set[str]:
+    try:
+        with get_db() as conn:
+            rows = conn.execute(
+                "SELECT study_id FROM user_seen_studies WHERE user_id = ?",
+                (user_id,),
+            ).fetchall()
+        return {str(r["study_id"] or "").strip() for r in rows if str(r["study_id"] or "").strip()}
+    except Exception:
+        return set()
+
+
+def mark_study_seen_for_user(user_id: int, study_id: str) -> None:
+    if not study_id:
+        return
+    try:
+        with get_db() as conn:
+            conn.execute(
+                """
+                INSERT INTO user_seen_studies (user_id, study_id, seen_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(user_id, study_id) DO NOTHING
+                """,
+                (user_id, study_id, now_iso_utc()),
+            )
+    except Exception:
+        return
 
 
 def register_not_transfusion_vote(study_id: str, user_id: int) -> Dict:
@@ -1071,8 +1112,21 @@ def frontend_assets(asset_path: str):
 def api_next():
     track_usage_event("next_api")
     user_id = current_user_id()
-    hidden_ids = get_user_hidden_study_ids(int(user_id)) if user_id is not None else set()
-    return jsonify(deck.get_next(excluded_ids=hidden_ids))
+    excluded_ids: set[str] = set()
+    if user_id is not None:
+        user_id = int(user_id)
+        excluded_ids = get_user_hidden_study_ids(user_id)
+        excluded_ids.update(get_user_seen_study_ids(user_id))
+
+    payload = deck.get_next(excluded_ids=excluded_ids)
+
+    if user_id is not None and payload.get("ok"):
+        study = payload.get("study") or {}
+        study_id = str(study.get("id") or "").strip()
+        if study_id:
+            mark_study_seen_for_user(user_id, study_id)
+
+    return jsonify(payload)
 
 
 @app.get("/api/feeds")
