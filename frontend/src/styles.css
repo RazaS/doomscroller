@@ -487,42 +487,6 @@ body {
   font-weight: 700;
 }
 
-.archive-tools {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--soft-border);
-}
-
-.archive-email-input {
-  min-height: 32px;
-  border: 1px solid var(--soft-border);
-  border-radius: 10px;
-  padding: 6px 8px;
-  font-size: 0.78rem;
-  background: var(--input-bg);
-  color: var(--ink);
-}
-
-.archive-email-send {
-  border: 0;
-  border-radius: 10px;
-  min-height: 32px;
-  padding: 6px 10px;
-  background: linear-gradient(130deg, #0f766e, #14b8a6);
-  color: #fff;
-  font-size: 0.75rem;
-  font-weight: 700;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.archive-email-send:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
 .archive-close {
   border: 0;
   border-radius: 8px;
@@ -619,9 +583,5 @@ body {
 
   .controls {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .archive-tools {
-    grid-template-columns: 1fr;
   }
 }

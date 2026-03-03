@@ -28,8 +28,6 @@ export default function App() {
   const [currentUsername, setCurrentUsername] = useState("");
   const [archiveEntries, setArchiveEntries] = useState([]);
   const [isArchiveOpen, setIsArchiveOpen] = useState(false);
-  const [archiveEmail, setArchiveEmail] = useState("");
-  const [archiveEmailBusy, setArchiveEmailBusy] = useState(false);
 
   const [statusText, setStatusText] = useState("");
   const [statusError, setStatusError] = useState(false);
@@ -693,46 +691,6 @@ export default function App() {
     }
   }
 
-  async function emailArchiveList() {
-    if (!currentUsername) {
-      setStatus("Login required to email your archive.", true);
-      return;
-    }
-
-    const recipient = archiveEmail.trim();
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(recipient)) {
-      setStatus("Enter a valid recipient email.", true);
-      return;
-    }
-
-    if (!archiveEntries.length) {
-      await fetchArchive(currentUsername);
-    }
-    if (!archiveEntries.length) {
-      setStatus("Archive is empty.", true);
-      return;
-    }
-
-    setArchiveEmailBusy(true);
-    try {
-      const { res, data } = await apiJson("/api/archive/email", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: recipient }),
-      });
-
-      if (!res.ok || !data.ok) {
-        setStatus(data.message || "Could not email archive.", true);
-        return;
-      }
-
-      setStatus(data.message || `Archive emailed to ${recipient}.`);
-      logUsage("archive_email_ui", { to: recipient, count: archiveEntries.length });
-    } finally {
-      setArchiveEmailBusy(false);
-    }
-  }
-
   function maybeSwipeNavigate(startY, endY, startX, endX) {
     const dy = startY - endY;
     const dxSigned = endX - startX;
@@ -882,7 +840,6 @@ export default function App() {
 
   const authStateText = currentUsername ? `Logged in as ${currentUsername}` : "Not logged in";
   const archiveButtonText = `Archive (${archiveEntries.length})`;
-  const archiveEmailButtonLabel = archiveEmailBusy ? "Sending..." : "Email Archive";
   const darkModeEnabled = theme === "dark";
 
   const signupButtonClass = useMemo(
@@ -1081,23 +1038,6 @@ export default function App() {
             </span>
             <button className="archive-close" type="button" onClick={() => setIsArchiveOpen(false)}>
               Close
-            </button>
-          </div>
-          <div className="archive-tools">
-            <input
-              className="archive-email-input"
-              type="email"
-              placeholder="recipient@email.com"
-              value={archiveEmail}
-              onChange={(ev) => setArchiveEmail(ev.target.value)}
-            />
-            <button
-              className="archive-email-send"
-              type="button"
-              onClick={emailArchiveList}
-              disabled={archiveEmailBusy}
-            >
-              {archiveEmailButtonLabel}
             </button>
           </div>
           <div className="archive-list">
