@@ -8,6 +8,7 @@ import re
 import sqlite3
 import threading
 import time
+from collections import Counter
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
@@ -606,7 +607,11 @@ class StudyDeck:
             if self._fetch_due():
                 self._append_runtime_new_items_locked()
 
-    def get_next(self, excluded_ids: Optional[set[str]] = None) -> Dict:
+    def get_next(
+        self,
+        excluded_ids: Optional[set[str]] = None,
+        excluded_journals: Optional[set[str]] = None,
+    ) -> Dict:
         self.maybe_refresh()
         with self.lock:
             self._apply_exclusions_locked()
@@ -627,12 +632,15 @@ class StudyDeck:
                 }
 
             hidden_ids = excluded_ids or set()
+            blocked_journals = {j for j in (excluded_journals or set()) if str(j or "").strip()}
             study = None
-            if hidden_ids:
+            if hidden_ids or blocked_journals:
                 attempts = len(self.deck)
                 while attempts > 0 and self.deck:
                     candidate = self.deck.pop(0)
-                    if candidate.get("id") in hidden_ids:
+                    candidate_id = str(candidate.get("id") or "")
+                    candidate_journal = str(candidate.get("journal") or "")
+                    if candidate_id in hidden_ids or candidate_journal in blocked_journals:
                         # Keep hidden studies in global pool for other users.
                         self.deck.append(candidate)
                     else:
@@ -669,6 +677,71 @@ class StudyDeck:
                 "remaining_in_deck": len(self.deck),
                 "last_refresh_iso": self._last_refresh_iso(),
             }
+
+    def get_journal_counts(self) -> List[Dict]:
+        self.maybe_refresh()
+        with self.lock:
+            self._apply_exclusions_locked()
+            counts: Counter = Counter()
+            for item in self.items:
+                journal = str(item.get("journal") or "").strip()
+                if journal:
+                    counts[journal] += 1
+        return [
+            {"journal": journal, "count": int(count)}
+            for journal, count in sorted(counts.items(), key=lambda pair: (-pair[1], pair[0].lower()))
+        ]
+
+    def search_studies(
+        self,
+        query: str,
+        limit: int = 200,
+        excluded_ids: Optional[set[str]] = None,
+        excluded_journals: Optional[set[str]] = None,
+    ) -> List[Dict]:
+        self.maybe_refresh()
+        needle = str(query or "").strip().lower()
+        if not needle:
+            return []
+
+        hidden_ids = excluded_ids or set()
+        blocked_journals = {j for j in (excluded_journals or set()) if str(j or "").strip()}
+        rows: List[Dict] = []
+        with self.lock:
+            self._apply_exclusions_locked()
+            for item in self.items:
+                item_id = str(item.get("id") or "").strip()
+                if item_id and item_id in hidden_ids:
+                    continue
+                journal = str(item.get("journal") or "").strip()
+                if journal and journal in blocked_journals:
+                    continue
+                haystack = " ".join(
+                    [
+                        str(item.get("title") or ""),
+                        journal,
+                        str(item.get("summary") or ""),
+                    ]
+                ).lower()
+                if needle not in haystack:
+                    continue
+                rows.append(
+                    {
+                        "id": item_id,
+                        "title": str(item.get("title") or ""),
+                        "journal": journal,
+                        "published_label": str(item.get("published_label") or ""),
+                        "published_sort_ts": float(item.get("published_sort_ts") or 0.0),
+                        "link": str(item.get("link") or ""),
+                        "summary": str(item.get("summary") or ""),
+                    }
+                )
+
+        rows.sort(key=lambda r: float(r.get("published_sort_ts") or 0.0), reverse=True)
+        trimmed = rows[: max(1, min(int(limit or 0), 500))]
+        for row in trimmed:
+            row.pop("published_sort_ts", None)
+        return trimmed
 
     def get_study_by_id(self, study_id: str) -> Optional[Dict]:
         self.maybe_refresh()
@@ -896,6 +969,18 @@ def init_db() -> None:
 
             CREATE INDEX IF NOT EXISTS idx_user_seen_studies_user_id
             ON user_seen_studies (user_id);
+
+            CREATE TABLE IF NOT EXISTS user_excluded_journals (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                journal_name TEXT NOT NULL,
+                excluded_at TEXT NOT NULL,
+                UNIQUE(user_id, journal_name),
+                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_user_excluded_journals_user_id
+            ON user_excluded_journals (user_id);
             """
         )
 
@@ -991,6 +1076,39 @@ def mark_study_seen_for_user(user_id: int, study_id: str) -> None:
             )
     except Exception:
         return
+
+
+def get_user_excluded_journals(user_id: int) -> set[str]:
+    try:
+        with get_db() as conn:
+            rows = conn.execute(
+                "SELECT journal_name FROM user_excluded_journals WHERE user_id = ?",
+                (user_id,),
+            ).fetchall()
+        return {str(r["journal_name"] or "").strip() for r in rows if str(r["journal_name"] or "").strip()}
+    except Exception:
+        return set()
+
+
+def set_user_journal_selected(user_id: int, journal_name: str, selected: bool) -> None:
+    journal_name = str(journal_name or "").strip()
+    if not journal_name:
+        return
+    with get_db() as conn:
+        if selected:
+            conn.execute(
+                "DELETE FROM user_excluded_journals WHERE user_id = ? AND journal_name = ?",
+                (user_id, journal_name),
+            )
+        else:
+            conn.execute(
+                """
+                INSERT INTO user_excluded_journals (user_id, journal_name, excluded_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(user_id, journal_name) DO NOTHING
+                """,
+                (user_id, journal_name, now_iso_utc()),
+            )
 
 
 def register_not_transfusion_vote(study_id: str, user_id: int) -> Dict:
@@ -1113,12 +1231,14 @@ def api_next():
     track_usage_event("next_api")
     user_id = current_user_id()
     excluded_ids: set[str] = set()
+    excluded_journals: set[str] = set()
     if user_id is not None:
         user_id = int(user_id)
         excluded_ids = get_user_hidden_study_ids(user_id)
         excluded_ids.update(get_user_seen_study_ids(user_id))
+        excluded_journals = get_user_excluded_journals(user_id)
 
-    payload = deck.get_next(excluded_ids=excluded_ids)
+    payload = deck.get_next(excluded_ids=excluded_ids, excluded_journals=excluded_journals)
 
     if user_id is not None and payload.get("ok"):
         study = payload.get("study") or {}
@@ -1132,6 +1252,97 @@ def api_next():
 @app.get("/api/feeds")
 def api_feeds():
     return jsonify({"feeds": deck.load_feeds()})
+
+
+@app.get("/api/journal-filters")
+def api_journal_filters_get():
+    unauth = require_user()
+    if unauth:
+        return jsonify(unauth), 401
+
+    user_id = int(current_user_id() or 0)
+    excluded = get_user_excluded_journals(user_id)
+    journals = deck.get_journal_counts()
+    payload = [
+        {
+            "journal": str(item.get("journal") or ""),
+            "count": int(item.get("count") or 0),
+            "selected": str(item.get("journal") or "") not in excluded,
+        }
+        for item in journals
+        if str(item.get("journal") or "").strip()
+    ]
+    return jsonify({"ok": True, "journals": payload})
+
+
+@app.post("/api/journal-filters")
+def api_journal_filters_set():
+    unauth = require_user()
+    if unauth:
+        return jsonify(unauth), 401
+
+    payload = request.get_json(silent=True) or {}
+    journal_name = str(payload.get("journal") or "").strip()
+    if not journal_name:
+        return jsonify({"ok": False, "message": "journal is required."}), 400
+
+    selected_raw = payload.get("selected", True)
+    if isinstance(selected_raw, bool):
+        selected = selected_raw
+    elif isinstance(selected_raw, (int, float)):
+        selected = bool(selected_raw)
+    else:
+        selected = str(selected_raw).strip().lower() not in {"0", "false", "no", "off"}
+    user_id = int(current_user_id() or 0)
+    set_user_journal_selected(user_id, journal_name, selected=selected)
+
+    excluded = get_user_excluded_journals(user_id)
+    journals = deck.get_journal_counts()
+    response_items = [
+        {
+            "journal": str(item.get("journal") or ""),
+            "count": int(item.get("count") or 0),
+            "selected": str(item.get("journal") or "") not in excluded,
+        }
+        for item in journals
+        if str(item.get("journal") or "").strip()
+    ]
+    track_usage_event(
+        "journal_filter_toggle",
+        {"journal": journal_name, "selected": selected},
+    )
+    return jsonify({"ok": True, "journals": response_items})
+
+
+@app.get("/api/search-studies")
+def api_search_studies():
+    raw_query = str(request.args.get("q") or "").strip()
+    limit_raw = str(request.args.get("limit") or "200").strip()
+    if len(raw_query) < 2:
+        return jsonify({"ok": True, "query": raw_query, "results": [], "count": 0})
+
+    try:
+        limit = int(limit_raw)
+    except ValueError:
+        limit = 200
+    limit = max(1, min(limit, 500))
+
+    user_id = current_user_id()
+    excluded_ids: set[str] = set()
+    excluded_journals: set[str] = set()
+    if user_id is not None:
+        uid = int(user_id)
+        excluded_ids = get_user_hidden_study_ids(uid)
+        excluded_journals = get_user_excluded_journals(uid)
+
+    results = deck.search_studies(
+        raw_query,
+        limit=limit,
+        excluded_ids=excluded_ids,
+        excluded_journals=excluded_journals,
+    )
+    track_usage_event("study_search", {"query": raw_query, "count": len(results)})
+    return jsonify({"ok": True, "query": raw_query, "results": results, "count": len(results)})
 
 
 @app.post("/api/refresh")

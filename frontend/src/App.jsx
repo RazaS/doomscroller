@@ -28,6 +28,13 @@ export default function App() {
   const [currentUsername, setCurrentUsername] = useState("");
   const [archiveEntries, setArchiveEntries] = useState([]);
   const [isArchiveOpen, setIsArchiveOpen] = useState(false);
+  const [isJournalMenuOpen, setIsJournalMenuOpen] = useState(false);
+  const [journalOptions, setJournalOptions] = useState([]);
+  const [journalBusy, setJournalBusy] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [searchBusy, setSearchBusy] = useState(false);
 
   const [statusText, setStatusText] = useState("");
   const [statusError, setStatusError] = useState(false);
@@ -446,6 +453,8 @@ export default function App() {
       await fetchArchive(username);
     } else {
       setArchiveEntries([]);
+      setJournalOptions([]);
+      setIsJournalMenuOpen(false);
     }
   }
 
@@ -509,6 +518,8 @@ export default function App() {
     await apiJson("/api/logout", { method: "POST" });
     setCurrentUsername("");
     setArchiveEntries([]);
+    setJournalOptions([]);
+    setIsJournalMenuOpen(false);
     setStatus("Logged out.");
     logUsage("logout_ui");
   }
@@ -691,6 +702,113 @@ export default function App() {
     }
   }
 
+  function applyJournalSelectionToHistory(journals) {
+    const allowed = new Set((journals || []).filter((j) => j.selected).map((j) => j.journal));
+    if (!allowed.size) {
+      historyRef.current = [];
+      historyIndexRef.current = -1;
+      return;
+    }
+    const currentHistoryStudyId =
+      historyIndexRef.current >= 0 ? (historyRef.current[historyIndexRef.current]?.study?.id || "") : "";
+    const filtered = historyRef.current.filter((entry) => allowed.has(entry?.study?.journal || ""));
+    historyRef.current = filtered;
+    historyIndexRef.current = filtered.findIndex((entry) => (entry?.study?.id || "") === currentHistoryStudyId);
+  }
+
+  async function openJournalMenu() {
+    if (!currentUsername) {
+      setStatus("Login required to set journal filters.", true);
+      return;
+    }
+    setJournalBusy(true);
+    try {
+      const { res, data } = await apiJson("/api/journal-filters");
+      if (!res.ok || !data.ok) {
+        setStatus(data.message || "Could not load journal filters.", true);
+        return;
+      }
+      setJournalOptions(Array.isArray(data.journals) ? data.journals : []);
+      setIsJournalMenuOpen(true);
+      logUsage("open_journal_filters_ui");
+    } finally {
+      setJournalBusy(false);
+    }
+  }
+
+  async function toggleJournalSelection(journalName, nextSelected) {
+    if (!journalName || journalBusy) return;
+    setJournalBusy(true);
+    try {
+      const { res, data } = await apiJson("/api/journal-filters", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ journal: journalName, selected: nextSelected }),
+      });
+      if (!res.ok || !data.ok) {
+        setStatus(data.message || "Could not update journal filter.", true);
+        return;
+      }
+      const journals = Array.isArray(data.journals) ? data.journals : [];
+      setJournalOptions(journals);
+      applyJournalSelectionToHistory(journals);
+
+      const activeJournalSet = new Set(journals.filter((j) => j.selected).map((j) => j.journal));
+      if (currentStudyRef.current && !activeJournalSet.has(currentStudyRef.current.journal || "")) {
+        await showNextStudy("down", { suppressLoadingStatus: true });
+      }
+      setStatus("Journal filters updated.");
+      logUsage("journal_filter_toggle_ui", { journal: journalName, selected: nextSelected });
+    } finally {
+      setJournalBusy(false);
+    }
+  }
+
+  function openSearchPopup() {
+    setIsSearchOpen(true);
+    logUsage("open_search_popup_ui");
+  }
+
+  async function runStudySearch() {
+    const q = searchQuery.trim();
+    if (q.length < 2) {
+      setSearchResults([]);
+      setStatus("Enter at least 2 characters to search.", true);
+      return;
+    }
+    setSearchBusy(true);
+    try {
+      const { res, data } = await apiJson(`/api/search-studies?q=${encodeURIComponent(q)}&limit=300`);
+      if (!res.ok || !data.ok) {
+        setStatus(data.message || "Search failed.", true);
+        return;
+      }
+      const results = Array.isArray(data.results) ? data.results : [];
+      setSearchResults(results);
+      setStatus(`Found ${results.length} matching studies.`);
+      logUsage("study_search_ui", { query: q, count: results.length });
+    } finally {
+      setSearchBusy(false);
+    }
+  }
+
+  async function copySearchResults() {
+    if (!searchResults.length) {
+      setStatus("No search results to copy.", true);
+      return;
+    }
+    const body = searchResults
+      .map((study, i) => `Result ${i + 1}\n${buildStudyText(study, study.summary || "")}`)
+      .join("\n\n----------------------------------------\n\n");
+    try {
+      await copyTextToClipboard(body);
+      setStatus(`Copied ${searchResults.length} search results.`);
+      logUsage("copy_search_results_ui", { count: searchResults.length });
+    } catch (err) {
+      setStatus(`Copy search results failed: ${err.message}`, true);
+    }
+  }
+
   function maybeSwipeNavigate(startY, endY, startX, endX) {
     const dy = startY - endY;
     const dxSigned = endX - startX;
@@ -840,6 +958,8 @@ export default function App() {
 
   const authStateText = currentUsername ? `Logged in as ${currentUsername}` : "Not logged in";
   const archiveButtonText = `Archive (${archiveEntries.length})`;
+  const journalFilterButtonLabel = journalBusy ? "..." : "Journals";
+  const searchRunButtonLabel = searchBusy ? "Searching..." : "Run Search";
   const darkModeEnabled = theme === "dark";
 
   const signupButtonClass = useMemo(
@@ -935,6 +1055,15 @@ export default function App() {
             {archiveButtonText}
           </button>
           <p className="auth-state">{authStateText}</p>
+        </section>
+
+        <section className="tool-row">
+          <button className="tool-btn" type="button" onClick={openJournalMenu} disabled={journalBusy}>
+            {journalFilterButtonLabel}
+          </button>
+          <button className="tool-btn search" type="button" onClick={openSearchPopup}>
+            Search
+          </button>
         </section>
 
         <section className="card-wrap">
@@ -1049,6 +1178,108 @@ export default function App() {
             ) : (
               archiveEntries.map((study, idx) => (
                 <div className="archive-item" key={`${study.study_id || study.link || "entry"}-${idx}`}>
+                  <h4>{study.title || "Untitled"}</h4>
+                  <p>{`${study.journal || ""} ${study.published_label || ""}`.trim()}</p>
+                  {study.link ? (
+                    <p>
+                      <a href={study.link} target="_blank" rel="noreferrer">
+                        Open
+                      </a>
+                    </p>
+                  ) : null}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </section>
+
+      <section
+        className={`archive-panel${isJournalMenuOpen ? " open" : ""}`}
+        onClick={(ev) => {
+          if (ev.target === ev.currentTarget) setIsJournalMenuOpen(false);
+        }}
+      >
+        <div className="archive-card journal-filter-card">
+          <div className="archive-head">
+            <span>Journal Filters</span>
+            <button className="archive-close" type="button" onClick={() => setIsJournalMenuOpen(false)}>
+              Close
+            </button>
+          </div>
+          <div className="journal-filter-help">
+            Click to include/exclude journals. Included journals are highlighted.
+          </div>
+          <div className="journal-filter-list">
+            {!journalOptions.length ? (
+              <div className="archive-item">
+                <h4>No journal options yet</h4>
+                <p>Load studies first, then reopen this menu.</p>
+              </div>
+            ) : (
+              journalOptions.map((item) => {
+                const selected = Boolean(item.selected);
+                return (
+                  <button
+                    key={item.journal}
+                    type="button"
+                    className={`journal-pill${selected ? " selected" : ""}`}
+                    onClick={() => toggleJournalSelection(item.journal, !selected)}
+                    disabled={journalBusy}
+                    title={`${item.count} studies`}
+                  >
+                    <span>{item.journal}</span>
+                    <span>{item.count}</span>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+      </section>
+
+      <section
+        className={`archive-panel${isSearchOpen ? " open" : ""}`}
+        onClick={(ev) => {
+          if (ev.target === ev.currentTarget) setIsSearchOpen(false);
+        }}
+      >
+        <div className="archive-card search-card">
+          <div className="archive-head">
+            <span>Search Studies</span>
+            <button className="archive-close" type="button" onClick={() => setIsSearchOpen(false)}>
+              Close
+            </button>
+          </div>
+          <div className="search-tools">
+            <input
+              type="text"
+              value={searchQuery}
+              placeholder="Search studies (case-insensitive substring)"
+              onChange={(ev) => setSearchQuery(ev.target.value)}
+              onKeyDown={(ev) => {
+                if (ev.key === "Enter") {
+                  ev.preventDefault();
+                  void runStudySearch();
+                }
+              }}
+            />
+            <button type="button" onClick={() => void runStudySearch()} disabled={searchBusy}>
+              {searchRunButtonLabel}
+            </button>
+            <button type="button" onClick={() => void copySearchResults()} disabled={!searchResults.length}>
+              Copy All
+            </button>
+          </div>
+          <div className="search-results">
+            {!searchResults.length ? (
+              <div className="archive-item">
+                <h4>No results yet</h4>
+                <p>Enter at least 2 characters and run search.</p>
+              </div>
+            ) : (
+              searchResults.map((study, idx) => (
+                <div className="archive-item" key={`${study.id || study.link || "search"}-${idx}`}>
                   <h4>{study.title || "Untitled"}</h4>
                   <p>{`${study.journal || ""} ${study.published_label || ""}`.trim()}</p>
                   {study.link ? (
