@@ -1134,13 +1134,16 @@ export default function App() {
           </article>
         </section>
 
-        <section className="controls">
+        <section className="controls nav-controls">
           <button id="prev-btn" className="ctl-btn" type="button" onClick={() => showPreviousStudy("down")}>
             ←
           </button>
           <button id="next-btn" className="ctl-btn" type="button" onClick={() => showNextStudy("down")}>
             →
           </button>
+        </section>
+
+        <section className="controls filter-controls">
           <button id="journals-btn" className="ctl-btn" type="button" onClick={openJournalMenu} disabled={journalBusy}>
             {journalFilterButtonLabel}
           </button>
