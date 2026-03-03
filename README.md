@@ -15,7 +15,7 @@ Default feed is the latest `Transfusion` RSS feed:
 - Archive button opens your saved list; copy buttons support current study and full archive list.
 - Tap-to-flip card: back side fetches abstract text from PubMed (falls back to feed summary if no match).
 - Randomized study ordering from your configured feeds.
-- Additional PubMed stream via `pubmed-sieve`: pulls studies matching `transfusion`, `transfused`, or `transfusing` in title/abstract (`[tiab]`) from the last 6 months.
+- Additional PubMed stream via `pubmed-sieve`: pulls studies matching `transfusion`, `transfused`, or `transfusing` in title/abstract (`[tiab]`) from the last 1 year.
 - Feed list managed via `feeds.csv` (no code changes needed to add more journals).
 - RSS/Atom feed items are only kept if title or abstract/summary contains one of: `transfusion`, `transfused`, `transfusing`.
 - Runtime starts from persisted cache (`data/studies_cache.json`) for fast initial load.
@@ -23,7 +23,7 @@ Default feed is the latest `Transfusion` RSS feed:
 - If the last update check was within the last week, runtime skips the updater check.
 - Study cache is saved in-repo at `data/studies_cache.json` so you can still update offline and push to GitHub manually.
 - Offline updater can fetch at most weekly by default; pass `--force` to fetch immediately.
-- Studies are kept for at least 6 months from when they were first pulled.
+- Studies are kept for at least 1 year from when they were first pulled.
 
 ## Setup (React + Flask)
 
@@ -108,4 +108,4 @@ sudo systemctl start doomscroller-autoupdate.service
 This app vendors code from [pubmed-sieve](https://github.com/hbhargava7/pubmed-sieve) under `third_party/pubmed_sieve`.
 During offline cache update, it adds PubMed studies matching:
 
-- `(("transfusion"[tiab]) OR ("transfused"[tiab]) OR ("transfusing"[tiab])) AND ("last 6 months"[dp])`
+- `(("transfusion"[tiab]) OR ("transfused"[tiab]) OR ("transfusing"[tiab])) AND ("last 1 year"[dp])`
