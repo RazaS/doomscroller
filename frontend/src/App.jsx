@@ -764,6 +764,35 @@ export default function App() {
     }
   }
 
+  async function setAllJournalSelections(nextSelected) {
+    if (journalBusy) return;
+    setJournalBusy(true);
+    try {
+      const { res, data } = await apiJson("/api/journal-filters", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ all_selected: nextSelected }),
+      });
+      if (!res.ok || !data.ok) {
+        setStatus(data.message || "Could not update all journal filters.", true);
+        return;
+      }
+      const journals = Array.isArray(data.journals) ? data.journals : [];
+      setJournalOptions(journals);
+      applyJournalSelectionToHistory(journals);
+
+      if (!nextSelected) {
+        setCurrentStudy(null);
+        setStatus("All journals unchecked.");
+      } else {
+        setStatus("All journals checked.");
+      }
+      logUsage("journal_filter_toggle_all_ui", { selected: nextSelected });
+    } finally {
+      setJournalBusy(false);
+    }
+  }
+
   function openSearchPopup() {
     setIsSearchOpen(true);
     logUsage("open_search_popup_ui");
@@ -1215,6 +1244,14 @@ export default function App() {
           </div>
           <div className="journal-filter-help">
             Click to include/exclude journals. Included journals are highlighted.
+          </div>
+          <div className="journal-filter-actions">
+            <button type="button" onClick={() => void setAllJournalSelections(true)} disabled={journalBusy}>
+              Check all
+            </button>
+            <button type="button" onClick={() => void setAllJournalSelections(false)} disabled={journalBusy}>
+              Uncheck all
+            </button>
           </div>
           <div className="journal-filter-list">
             {!journalOptions.length ? (

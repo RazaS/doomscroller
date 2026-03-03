@@ -1282,6 +1282,36 @@ def api_journal_filters_set():
         return jsonify(unauth), 401
 
     payload = request.get_json(silent=True) or {}
+    user_id = int(current_user_id() or 0)
+
+    if "all_selected" in payload:
+        selected_raw = payload.get("all_selected")
+        if isinstance(selected_raw, bool):
+            all_selected = selected_raw
+        elif isinstance(selected_raw, (int, float)):
+            all_selected = bool(selected_raw)
+        else:
+            all_selected = str(selected_raw).strip().lower() not in {"0", "false", "no", "off"}
+
+        journals = deck.get_journal_counts()
+        for item in journals:
+            journal_name = str(item.get("journal") or "").strip()
+            if journal_name:
+                set_user_journal_selected(user_id, journal_name, selected=all_selected)
+
+        excluded = get_user_excluded_journals(user_id)
+        response_items = [
+            {
+                "journal": str(item.get("journal") or ""),
+                "count": int(item.get("count") or 0),
+                "selected": str(item.get("journal") or "") not in excluded,
+            }
+            for item in journals
+            if str(item.get("journal") or "").strip()
+        ]
+        track_usage_event("journal_filter_toggle_all", {"selected": all_selected})
+        return jsonify({"ok": True, "journals": response_items})
+
     journal_name = str(payload.get("journal") or "").strip()
     if not journal_name:
         return jsonify({"ok": False, "message": "journal is required."}), 400
@@ -1293,7 +1323,6 @@ def api_journal_filters_set():
         selected = bool(selected_raw)
     else:
         selected = str(selected_raw).strip().lower() not in {"0", "false", "no", "off"}
-    user_id = int(current_user_id() or 0)
     set_user_journal_selected(user_id, journal_name, selected=selected)
 
     excluded = get_user_excluded_journals(user_id)
