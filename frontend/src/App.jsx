@@ -924,7 +924,11 @@ export default function App() {
   }
 
   function onCardClick(ev) {
-    if (ev.target.closest("#study-link") || ev.target.closest("#not-transfusion-btn")) {
+    if (
+      ev.target.closest("#study-link") ||
+      ev.target.closest("#not-transfusion-btn") ||
+      ev.target.closest("#study-copy-btn")
+    ) {
       return;
     }
     if (movedDuringTouchRef.current) {
@@ -1057,15 +1061,6 @@ export default function App() {
           <p className="auth-state">{authStateText}</p>
         </section>
 
-        <section className="tool-row">
-          <button className="tool-btn" type="button" onClick={openJournalMenu} disabled={journalBusy}>
-            {journalFilterButtonLabel}
-          </button>
-          <button className="tool-btn search" type="button" onClick={openSearchPopup}>
-            Search
-          </button>
-        </section>
-
         <section className="card-wrap">
           <article
             id="study-card"
@@ -1116,6 +1111,9 @@ export default function App() {
                   >
                     {notTransfusionButtonLabel}
                   </button>
+                  <button id="study-copy-btn" className="study-copy-btn" type="button" onClick={copyCurrentStudyInformation}>
+                    Copy
+                  </button>
                 </div>
               </section>
 
@@ -1143,11 +1141,11 @@ export default function App() {
           <button id="next-btn" className="ctl-btn" type="button" onClick={() => showNextStudy("down")}>
             →
           </button>
-          <button id="copy-btn" className="ctl-btn" type="button" onClick={copyCurrentStudyInformation}>
-            Copy
+          <button id="journals-btn" className="ctl-btn" type="button" onClick={openJournalMenu} disabled={journalBusy}>
+            {journalFilterButtonLabel}
           </button>
-          <button id="copy-list-btn" className="ctl-btn" type="button" onClick={copyArchiveListInformation}>
-            Copy List
+          <button id="search-btn" className="ctl-btn" type="button" onClick={openSearchPopup}>
+            Search
           </button>
         </section>
 
@@ -1167,6 +1165,11 @@ export default function App() {
             </span>
             <button className="archive-close" type="button" onClick={() => setIsArchiveOpen(false)}>
               Close
+            </button>
+          </div>
+          <div className="archive-tools">
+            <button className="archive-copy-btn" type="button" onClick={() => void copyArchiveListInformation()}>
+              Copy List
             </button>
           </div>
           <div className="archive-list">

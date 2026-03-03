@@ -192,34 +192,6 @@ body {
   padding-left: 2px;
 }
 
-.tool-row {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.tool-btn {
-  min-height: 32px;
-  border: 1px solid var(--soft-border);
-  border-radius: 10px;
-  background: var(--input-bg);
-  color: var(--ink);
-  font-size: 0.75rem;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.tool-btn.search {
-  background: linear-gradient(130deg, #1e293b, #334155);
-  color: #fff;
-  border-color: transparent;
-}
-
-.tool-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
 .card-wrap {
   position: relative;
   overflow: hidden;
@@ -373,6 +345,7 @@ body {
 .study-actions {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: auto auto;
   gap: 8px;
   align-items: center;
 }
@@ -395,6 +368,19 @@ body {
   opacity: 0.58;
   cursor: not-allowed;
   box-shadow: none;
+}
+
+.study-copy-btn {
+  grid-column: 1 / -1;
+  border: 0;
+  border-radius: 12px;
+  min-height: 34px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #fff;
+  cursor: pointer;
+  padding: 7px 8px;
+  background: linear-gradient(130deg, #334155, #1f2937);
 }
 
 .flip-hint {
@@ -431,11 +417,11 @@ body {
   background: linear-gradient(130deg, #9a3412, #c2410c);
 }
 
-#copy-btn {
-  background: linear-gradient(130deg, #334155, #1f2937);
+#journals-btn {
+  background: linear-gradient(130deg, #0f766e, #14b8a6);
 }
 
-#copy-list-btn {
+#search-btn {
   background: linear-gradient(130deg, #1d4ed8, #2563eb);
 }
 
@@ -513,6 +499,24 @@ body {
   border-bottom: 1px solid var(--soft-border);
   font-size: 0.86rem;
   font-weight: 700;
+}
+
+.archive-tools {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--soft-border);
+}
+
+.archive-copy-btn {
+  border: 0;
+  border-radius: 10px;
+  min-height: 32px;
+  width: 100%;
+  padding: 6px 10px;
+  background: linear-gradient(130deg, #1d4ed8, #2563eb);
+  color: #fff;
+  font-size: 0.74rem;
+  font-weight: 700;
+  cursor: pointer;
 }
 
 .archive-close {
