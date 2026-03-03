@@ -61,8 +61,12 @@ export default function App() {
 
   const historyRef = useRef([]);
   const historyIndexRef = useRef(-1);
-  const latestTotalLoadedRef = useRef(0);
-  const latestRemainingInDeckRef = useRef(0);
+  const latestDeckCountsRef = useRef({
+    total_loaded: 0,
+    remaining_in_deck: 0,
+    filtered_total_loaded: 0,
+    filtered_remaining_in_deck: 0,
+  });
 
   const loadingRef = useRef(false);
   const currentStudyRef = useRef(null);
@@ -128,11 +132,31 @@ export default function App() {
     setStatusError(Boolean(isError));
   }
 
-  function updateDeckBadge(total, remaining) {
-    if (!Number.isFinite(total) || total <= 0) {
+  function updateDeckBadge(counts) {
+    const totalRaw = Number.isFinite(counts?.total_loaded) ? Number(counts.total_loaded) : 0;
+    const remainingRaw = Number.isFinite(counts?.remaining_in_deck) ? Number(counts.remaining_in_deck) : 0;
+    const filteredTotalRaw = Number.isFinite(counts?.filtered_total_loaded)
+      ? Number(counts.filtered_total_loaded)
+      : totalRaw;
+    const filteredRemainingRaw = Number.isFinite(counts?.filtered_remaining_in_deck)
+      ? Number(counts.filtered_remaining_in_deck)
+      : remainingRaw;
+
+    const total = Math.max(0, Math.floor(totalRaw));
+    const remaining = Math.max(0, Math.min(total, Math.floor(remainingRaw)));
+    const filteredTotal = Math.max(0, Math.min(total, Math.floor(filteredTotalRaw)));
+    const filteredRemaining = Math.max(0, Math.min(filteredTotal, Math.floor(filteredRemainingRaw)));
+
+    if (total <= 0) {
       setBadgeText("No studies loaded");
       return;
     }
+
+    if (filteredTotal < total) {
+      setBadgeText(`${filteredRemaining} left /${filteredTotal} filtered (of ${total} total)`);
+      return;
+    }
+
     setBadgeText(`${remaining} left / ${total} loaded`);
   }
 
@@ -345,10 +369,18 @@ export default function App() {
     }
 
     if (Number.isFinite(entry.total_loaded) && Number.isFinite(entry.remaining_in_deck)) {
-      latestTotalLoadedRef.current = entry.total_loaded;
-      latestRemainingInDeckRef.current = entry.remaining_in_deck;
+      latestDeckCountsRef.current = {
+        total_loaded: Number(entry.total_loaded),
+        remaining_in_deck: Number(entry.remaining_in_deck),
+        filtered_total_loaded: Number.isFinite(entry.filtered_total_loaded)
+          ? Number(entry.filtered_total_loaded)
+          : Number(entry.total_loaded),
+        filtered_remaining_in_deck: Number.isFinite(entry.filtered_remaining_in_deck)
+          ? Number(entry.filtered_remaining_in_deck)
+          : Number(entry.remaining_in_deck),
+      };
     }
-    updateDeckBadge(latestTotalLoadedRef.current, latestRemainingInDeckRef.current);
+    updateDeckBadge(latestDeckCountsRef.current);
 
     if (entry.message) {
       // Keep runtime feed errors concise in UI; details stay in server logs.
@@ -394,7 +426,12 @@ export default function App() {
 
       if (!data.ok || !data.study) {
         setCurrentStudy(null);
-        updateDeckBadge(0, 0);
+        updateDeckBadge({
+          total_loaded: 0,
+          remaining_in_deck: 0,
+          filtered_total_loaded: 0,
+          filtered_remaining_in_deck: 0,
+        });
         setStatus(data.message || "No cached studies available.", true);
         return;
       }
@@ -403,6 +440,8 @@ export default function App() {
         study: data.study,
         total_loaded: data.total_loaded,
         remaining_in_deck: data.remaining_in_deck,
+        filtered_total_loaded: data.filtered_total_loaded,
+        filtered_remaining_in_deck: data.filtered_remaining_in_deck,
         message: data.message || "",
       };
 

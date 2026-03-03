@@ -46,7 +46,7 @@ DOI_RE = re.compile(r"\b10\.\d{4,9}/[-._;()/:a-z0-9]+\b", re.IGNORECASE)
 TRANSFUSION_TERM_RE = re.compile(r"\b(?:transfusion|transfused|transfusing)\b", re.IGNORECASE)
 PUBMED_SIEVE_QUERY_TERMS = ["transfusion", "transfused", "transfusing"]
 PUBMED_SIEVE_DATE_FILTER = "\"last 1 year\"[dp]"
-PUBMED_SIEVE_MAX_ITEMS = 150
+PUBMED_SIEVE_MAX_ITEMS = 500
 DATA_DIR = APP_ROOT / "data"
 STUDIES_CACHE_PATH = DATA_DIR / "studies_cache.json"
 LEGACY_STUDIES_CACHE_PATH = APP_ROOT / "cache" / "studies_cache.json"
@@ -628,11 +628,36 @@ class StudyDeck:
                     "study": None,
                     "total_loaded": 0,
                     "remaining_in_deck": 0,
+                    "filtered_total_loaded": 0,
+                    "filtered_remaining_in_deck": 0,
                     "last_refresh_iso": self._last_refresh_iso(),
                 }
 
             hidden_ids = excluded_ids or set()
             blocked_journals = {j for j in (excluded_journals or set()) if str(j or "").strip()}
+
+            def count_payload() -> Dict[str, int]:
+                total_loaded = len(self.items)
+                remaining_in_deck = len(self.deck)
+
+                if not blocked_journals:
+                    filtered_total_loaded = total_loaded
+                    filtered_remaining_in_deck = remaining_in_deck
+                else:
+                    filtered_total_loaded = sum(
+                        1 for item in self.items if str(item.get("journal") or "") not in blocked_journals
+                    )
+                    filtered_remaining_in_deck = sum(
+                        1 for item in self.deck if str(item.get("journal") or "") not in blocked_journals
+                    )
+
+                return {
+                    "total_loaded": total_loaded,
+                    "remaining_in_deck": remaining_in_deck,
+                    "filtered_total_loaded": filtered_total_loaded,
+                    "filtered_remaining_in_deck": filtered_remaining_in_deck,
+                }
+
             study = None
             if hidden_ids or blocked_journals:
                 attempts = len(self.deck)
@@ -651,15 +676,19 @@ class StudyDeck:
                 study = self.deck.pop(0)
 
             if study is None:
+                counts = count_payload()
                 return {
                     "ok": False,
                     "message": "No visible studies available for your account right now.",
                     "study": None,
-                    "total_loaded": len(self.items),
-                    "remaining_in_deck": len(self.deck),
+                    "total_loaded": counts["total_loaded"],
+                    "remaining_in_deck": counts["remaining_in_deck"],
+                    "filtered_total_loaded": counts["filtered_total_loaded"],
+                    "filtered_remaining_in_deck": counts["filtered_remaining_in_deck"],
                     "last_refresh_iso": self._last_refresh_iso(),
                 }
 
+            counts = count_payload()
             return {
                 "ok": True,
                 "message": self.last_error,
@@ -673,8 +702,10 @@ class StudyDeck:
                     "published_label": study["published_label"],
                     "feed_url": study["feed_url"],
                 },
-                "total_loaded": len(self.items),
-                "remaining_in_deck": len(self.deck),
+                "total_loaded": counts["total_loaded"],
+                "remaining_in_deck": counts["remaining_in_deck"],
+                "filtered_total_loaded": counts["filtered_total_loaded"],
+                "filtered_remaining_in_deck": counts["filtered_remaining_in_deck"],
                 "last_refresh_iso": self._last_refresh_iso(),
             }
 
