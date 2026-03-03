@@ -160,6 +160,33 @@ export default function App() {
     setBadgeText(`${remaining} left / ${total} loaded`);
   }
 
+  function applyDeckCounts(rawCounts) {
+    const prev = latestDeckCountsRef.current;
+    const numOr = (value, fallback) => {
+      const n = Number(value);
+      return Number.isFinite(n) ? n : fallback;
+    };
+
+    const totalLoaded = numOr(rawCounts?.total_loaded, numOr(prev?.total_loaded, 0));
+    const remainingInDeck = numOr(rawCounts?.remaining_in_deck, numOr(prev?.remaining_in_deck, 0));
+    const filteredTotalLoaded = numOr(
+      rawCounts?.filtered_total_loaded,
+      numOr(prev?.filtered_total_loaded, totalLoaded)
+    );
+    const filteredRemainingInDeck = numOr(
+      rawCounts?.filtered_remaining_in_deck,
+      numOr(prev?.filtered_remaining_in_deck, remainingInDeck)
+    );
+
+    latestDeckCountsRef.current = {
+      total_loaded: totalLoaded,
+      remaining_in_deck: remainingInDeck,
+      filtered_total_loaded: filteredTotalLoaded,
+      filtered_remaining_in_deck: filteredRemainingInDeck,
+    };
+    updateDeckBadge(latestDeckCountsRef.current);
+  }
+
   async function apiJson(path, options = {}) {
     const res = await fetch(path, options);
     const data = await res.json().catch(() => ({}));
@@ -369,18 +396,10 @@ export default function App() {
     }
 
     if (Number.isFinite(entry.total_loaded) && Number.isFinite(entry.remaining_in_deck)) {
-      latestDeckCountsRef.current = {
-        total_loaded: Number(entry.total_loaded),
-        remaining_in_deck: Number(entry.remaining_in_deck),
-        filtered_total_loaded: Number.isFinite(entry.filtered_total_loaded)
-          ? Number(entry.filtered_total_loaded)
-          : Number(entry.total_loaded),
-        filtered_remaining_in_deck: Number.isFinite(entry.filtered_remaining_in_deck)
-          ? Number(entry.filtered_remaining_in_deck)
-          : Number(entry.remaining_in_deck),
-      };
+      applyDeckCounts(entry);
+    } else {
+      updateDeckBadge(latestDeckCountsRef.current);
     }
-    updateDeckBadge(latestDeckCountsRef.current);
 
     if (entry.message) {
       // Keep runtime feed errors concise in UI; details stay in server logs.
@@ -426,7 +445,7 @@ export default function App() {
 
       if (!data.ok || !data.study) {
         setCurrentStudy(null);
-        updateDeckBadge({
+        applyDeckCounts({
           total_loaded: 0,
           remaining_in_deck: 0,
           filtered_total_loaded: 0,
@@ -768,6 +787,9 @@ export default function App() {
         return;
       }
       setJournalOptions(Array.isArray(data.journals) ? data.journals : []);
+      if (data.deck_counts) {
+        applyDeckCounts(data.deck_counts);
+      }
       setIsJournalMenuOpen(true);
       logUsage("open_journal_filters_ui");
     } finally {
@@ -790,6 +812,9 @@ export default function App() {
       }
       const journals = Array.isArray(data.journals) ? data.journals : [];
       setJournalOptions(journals);
+      if (data.deck_counts) {
+        applyDeckCounts(data.deck_counts);
+      }
       applyJournalSelectionToHistory(journals);
 
       const activeJournalSet = new Set(journals.filter((j) => j.selected).map((j) => j.journal));
@@ -818,6 +843,9 @@ export default function App() {
       }
       const journals = Array.isArray(data.journals) ? data.journals : [];
       setJournalOptions(journals);
+      if (data.deck_counts) {
+        applyDeckCounts(data.deck_counts);
+      }
       applyJournalSelectionToHistory(journals);
 
       if (!nextSelected) {

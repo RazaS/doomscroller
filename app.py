@@ -607,6 +607,34 @@ class StudyDeck:
             if self._fetch_due():
                 self._append_runtime_new_items_locked()
 
+    def _count_payload_locked(self, blocked_journals: Optional[set[str]] = None) -> Dict[str, int]:
+        blocked = {j for j in (blocked_journals or set()) if str(j or "").strip()}
+        total_loaded = len(self.items)
+        remaining_in_deck = len(self.deck)
+
+        if not blocked:
+            filtered_total_loaded = total_loaded
+            filtered_remaining_in_deck = remaining_in_deck
+        else:
+            filtered_total_loaded = sum(1 for item in self.items if str(item.get("journal") or "") not in blocked)
+            filtered_remaining_in_deck = sum(1 for item in self.deck if str(item.get("journal") or "") not in blocked)
+
+        return {
+            "total_loaded": total_loaded,
+            "remaining_in_deck": remaining_in_deck,
+            "filtered_total_loaded": filtered_total_loaded,
+            "filtered_remaining_in_deck": filtered_remaining_in_deck,
+        }
+
+    def get_deck_counts(self, excluded_journals: Optional[set[str]] = None) -> Dict[str, int]:
+        self.maybe_refresh()
+        with self.lock:
+            self._apply_exclusions_locked()
+            if not self.deck and self.items:
+                self._rebuild_deck_locked()
+            blocked_journals = {j for j in (excluded_journals or set()) if str(j or "").strip()}
+            return self._count_payload_locked(blocked_journals=blocked_journals)
+
     def get_next(
         self,
         excluded_ids: Optional[set[str]] = None,
@@ -636,28 +664,6 @@ class StudyDeck:
             hidden_ids = excluded_ids or set()
             blocked_journals = {j for j in (excluded_journals or set()) if str(j or "").strip()}
 
-            def count_payload() -> Dict[str, int]:
-                total_loaded = len(self.items)
-                remaining_in_deck = len(self.deck)
-
-                if not blocked_journals:
-                    filtered_total_loaded = total_loaded
-                    filtered_remaining_in_deck = remaining_in_deck
-                else:
-                    filtered_total_loaded = sum(
-                        1 for item in self.items if str(item.get("journal") or "") not in blocked_journals
-                    )
-                    filtered_remaining_in_deck = sum(
-                        1 for item in self.deck if str(item.get("journal") or "") not in blocked_journals
-                    )
-
-                return {
-                    "total_loaded": total_loaded,
-                    "remaining_in_deck": remaining_in_deck,
-                    "filtered_total_loaded": filtered_total_loaded,
-                    "filtered_remaining_in_deck": filtered_remaining_in_deck,
-                }
-
             study = None
             if hidden_ids or blocked_journals:
                 attempts = len(self.deck)
@@ -676,7 +682,7 @@ class StudyDeck:
                 study = self.deck.pop(0)
 
             if study is None:
-                counts = count_payload()
+                counts = self._count_payload_locked(blocked_journals=blocked_journals)
                 return {
                     "ok": False,
                     "message": "No visible studies available for your account right now.",
@@ -688,7 +694,7 @@ class StudyDeck:
                     "last_refresh_iso": self._last_refresh_iso(),
                 }
 
-            counts = count_payload()
+            counts = self._count_payload_locked(blocked_journals=blocked_journals)
             return {
                 "ok": True,
                 "message": self.last_error,
@@ -1303,7 +1309,8 @@ def api_journal_filters_get():
         for item in journals
         if str(item.get("journal") or "").strip()
     ]
-    return jsonify({"ok": True, "journals": payload})
+    deck_counts = deck.get_deck_counts(excluded_journals=excluded)
+    return jsonify({"ok": True, "journals": payload, "deck_counts": deck_counts})
 
 
 @app.post("/api/journal-filters")
@@ -1341,7 +1348,8 @@ def api_journal_filters_set():
             if str(item.get("journal") or "").strip()
         ]
         track_usage_event("journal_filter_toggle_all", {"selected": all_selected})
-        return jsonify({"ok": True, "journals": response_items})
+        deck_counts = deck.get_deck_counts(excluded_journals=excluded)
+        return jsonify({"ok": True, "journals": response_items, "deck_counts": deck_counts})
 
     journal_name = str(payload.get("journal") or "").strip()
     if not journal_name:
@@ -1371,7 +1379,8 @@ def api_journal_filters_set():
         "journal_filter_toggle",
         {"journal": journal_name, "selected": selected},
     )
-    return jsonify({"ok": True, "journals": response_items})
+    deck_counts = deck.get_deck_counts(excluded_journals=excluded)
+    return jsonify({"ok": True, "journals": response_items, "deck_counts": deck_counts})
 
 
 @app.get("/api/search-studies")
