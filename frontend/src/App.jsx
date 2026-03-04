@@ -643,14 +643,30 @@ export default function App() {
   function removeStudyFromHistory(studyId) {
     if (!studyId || !historyRef.current.length) return;
 
-    const currentHistoryStudyId =
-      historyIndexRef.current >= 0 ? (historyRef.current[historyIndexRef.current]?.study?.id || "") : "";
+    const prevEntries = historyRef.current;
+    const prevIndex = historyIndexRef.current;
+    const currentHistoryStudyId = prevIndex >= 0 ? (prevEntries[prevIndex]?.study?.id || "") : "";
+    const removedCurrent = currentHistoryStudyId && currentHistoryStudyId === studyId;
 
-    const filtered = historyRef.current.filter((entry) => (entry?.study?.id || "") !== studyId);
-    if (filtered.length === historyRef.current.length) return;
+    const filtered = prevEntries.filter((entry) => (entry?.study?.id || "") !== studyId);
+    if (filtered.length === prevEntries.length) return;
 
     historyRef.current = filtered;
-    historyIndexRef.current = filtered.findIndex((entry) => (entry?.study?.id || "") === currentHistoryStudyId);
+
+    if (!filtered.length) {
+      historyIndexRef.current = -1;
+      return;
+    }
+
+    if (removedCurrent) {
+      // Keep "next" behavior intuitive: after removing current, advance to the next card.
+      const fallbackIndex = Math.min(prevIndex - 1, filtered.length - 1);
+      historyIndexRef.current = Math.max(-1, fallbackIndex);
+      return;
+    }
+
+    const foundIndex = filtered.findIndex((entry) => (entry?.study?.id || "") === currentHistoryStudyId);
+    historyIndexRef.current = foundIndex >= 0 ? foundIndex : Math.min(prevIndex, filtered.length - 1);
   }
 
   async function markCurrentStudyNotTransfusion() {
