@@ -1143,27 +1143,31 @@ export default function App() {
           {statusText}
         </p>
 
-        <section className="auth-row">
-          <input
-            type="text"
-            placeholder="username"
-            autoComplete="username"
-            value={usernameInput}
-            onChange={(ev) => setUsernameInput(ev.target.value)}
-          />
-          <input
-            type="password"
-            placeholder="password"
-            autoComplete="current-password"
-            value={passwordInput}
-            onChange={(ev) => setPasswordInput(ev.target.value)}
-          />
-          <button id="login-btn" className="auth-btn" type="button" onClick={login}>
-            Login
-          </button>
-          <button id="signup-btn" className={signupButtonClass} type="button" onClick={signup}>
-            {signupButtonLabel}
-          </button>
+        <section className={`auth-row${currentUsername ? " auth-row-logged-in" : ""}`}>
+          {!currentUsername ? (
+            <>
+              <input
+                type="text"
+                placeholder="username"
+                autoComplete="username"
+                value={usernameInput}
+                onChange={(ev) => setUsernameInput(ev.target.value)}
+              />
+              <input
+                type="password"
+                placeholder="password"
+                autoComplete="current-password"
+                value={passwordInput}
+                onChange={(ev) => setPasswordInput(ev.target.value)}
+              />
+              <button id="login-btn" className="auth-btn" type="button" onClick={login}>
+                Login
+              </button>
+              <button id="signup-btn" className={signupButtonClass} type="button" onClick={signup}>
+                {signupButtonLabel}
+              </button>
+            </>
+          ) : null}
           <button id="logout-btn" className="auth-btn" type="button" onClick={logout}>
             Logout
           </button>

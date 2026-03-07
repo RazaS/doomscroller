@@ -143,6 +143,10 @@ body {
   align-items: center;
 }
 
+.auth-row-logged-in {
+  grid-template-columns: auto auto 1fr;
+}
+
 .auth-row input {
   min-height: 34px;
   border: 1px solid var(--soft-border);
@@ -694,6 +698,10 @@ body {
   .auth-row {
     grid-template-columns: 1fr 1fr;
     gap: 5px;
+  }
+
+  .auth-row-logged-in {
+    grid-template-columns: repeat(2, minmax(0, auto));
   }
 
   .auth-row input,
